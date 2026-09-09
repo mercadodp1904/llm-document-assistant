@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+pytest
+pytest-mock
+httpx
+pydantic
+google-genai
+sentence-transformers
+numpy
+pypdf
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]

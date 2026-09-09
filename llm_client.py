@@ -8,7 +8,7 @@ except ImportError:  # pragma: no cover - exercised when dependencies are absent
     genai = None
 
 
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.6-flash"
 
 
 def answer_question(

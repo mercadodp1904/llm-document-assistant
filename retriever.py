@@ -30,13 +30,26 @@ class InMemoryRetriever:
         query_vectors = self.embed_query([query])
         if not query_vectors:
             return []
-        query_vector = query_vectors[0]
+        return [
+            chunk
+            for _, chunk in self.search_with_embedding(query_vectors[0], top_k)
+        ]
+
+    def search_with_embedding(
+        self,
+        query_vector: Sequence[float],
+        top_k: int = 3,
+    ) -> list[tuple[float, str]]:
+        """Return scored chunks for an already-generated query embedding."""
+        if top_k <= 0 or not self.chunks:
+            return []
+
         scored_chunks = [
             (self._cosine_similarity(query_vector, vector), chunk)
             for chunk, vector in zip(self.chunks, self.embeddings)
         ]
         scored_chunks.sort(key=lambda item: item[0], reverse=True)
-        return [chunk for _, chunk in scored_chunks[:top_k]]
+        return scored_chunks[:top_k]
 
     @staticmethod
     def _cosine_similarity(

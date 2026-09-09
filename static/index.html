@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Ask questions about an uploaded PDF document.">
+  <title>Document Q&amp;A</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="app-header">
+      <div class="brand-mark" aria-hidden="true">D</div>
+      <div>
+        <h1>Document Assistant</h1>
+        <p>Ask across your uploaded PDFs</p>
+      </div>
+    </header>
+
+    <section class="app-body" aria-label="Document question and answer workspace">
+      <aside class="sidebar">
+        <div class="sidebar-heading">
+          <p class="eyebrow">Workspace</p>
+          <h2>Your documents</h2>
+        </div>
+        <form id="upload-form" class="upload-form">
+          <label class="file-drop" for="document-file">
+            <span class="file-icon" aria-hidden="true">PDF</span>
+            <span class="file-copy">
+              <strong id="file-label">Add a PDF</strong>
+              <small>20 MB maximum</small>
+            </span>
+            <span class="browse-text">Browse</span>
+          </label>
+          <input id="document-file" name="file" type="file" accept="application/pdf,.pdf" required>
+          <button id="upload-button" class="button button-primary" type="submit">Upload PDF</button>
+        </form>
+        <p id="upload-confirmation" class="confirmation" role="status" hidden></p>
+        <div id="uploaded-documents" class="uploaded-documents" hidden>
+          <h3>Uploaded</h3>
+          <ul id="document-list"></ul>
+        </div>
+        <p class="sidebar-note">Upload multiple documents to search them together.</p>
+      </aside>
+
+      <section class="chat-panel" aria-label="Chat with your documents">
+        <div id="exchange" class="exchange" aria-live="polite">
+          <div class="empty-state">
+            <span class="empty-icon" aria-hidden="true">?</span>
+            <h2>What would you like to know?</h2>
+            <p>Upload a PDF, then ask a question to start a conversation.</p>
+          </div>
+        </div>
+        <div class="composer-area">
+          <p id="status" class="status" role="status" aria-live="polite"></p>
+          <form id="ask-form" class="ask-form">
+            <label class="sr-only" for="question">Question</label>
+            <div class="question-row">
+              <input id="question" name="question" type="text" placeholder="Ask a question about your documents..." autocomplete="off" disabled required>
+              <button id="ask-button" class="button button-dark" type="submit" disabled>Ask</button>
+            </div>
+          </form>
+          <p class="composer-hint">Answers are grounded in your uploaded documents.</p>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

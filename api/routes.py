@@ -1,6 +1,7 @@
 """HTTP routes for document upload and question answering."""
 
 from io import BytesIO
+from dataclasses import dataclass
 import logging
 from uuid import uuid4
 
@@ -16,7 +17,13 @@ from retriever import InMemoryRetriever
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-documents: dict[str, InMemoryRetriever] = {}
+@dataclass
+class StoredDocument:
+    filename: str
+    retriever: InMemoryRetriever
+
+
+documents: dict[str, StoredDocument] = {}
 
 
 class UploadResponse(BaseModel):
@@ -25,15 +32,20 @@ class UploadResponse(BaseModel):
 
 
 class AskRequest(BaseModel):
-    doc_id: str
     question: str = Field(min_length=1)
     top_k: int = Field(default=3, ge=1, le=20)
     model: str = DEFAULT_MODEL
 
 
+class SourceReference(BaseModel):
+    doc_id: str
+    filename: str
+    text: str
+
+
 class AskResponse(BaseModel):
     answer: str
-    sources: list[str]
+    sources: list[SourceReference]
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -57,7 +69,7 @@ async def upload_document(file: UploadFile = File(...)) -> UploadResponse:
         raise HTTPException(status_code=400, detail="Could not process the PDF") from exc
 
     doc_id = str(uuid4())
-    documents[doc_id] = retriever
+    documents[doc_id] = StoredDocument(filename=file.filename or "uploaded.pdf", retriever=retriever)
     logger.info("Chunking done and embeddings generated for document %s", doc_id)
     return UploadResponse(doc_id=doc_id, chunk_count=len(chunks))
 
@@ -65,12 +77,27 @@ async def upload_document(file: UploadFile = File(...)) -> UploadResponse:
 @router.post("/ask", response_model=AskResponse)
 async def ask_question(request: AskRequest) -> AskResponse:
     """Retrieve context for a question and generate a grounded answer."""
-    retriever = documents.get(request.doc_id)
-    if retriever is None:
+    if not documents:
         raise HTTPException(status_code=404, detail="Document not found")
 
     try:
-        context = retriever.search(request.question, request.top_k)
+        query_vectors = generate_embeddings([request.question])
+        if not query_vectors:
+            raise ValueError("Could not generate a query embedding")
+
+        ranked_chunks: list[tuple[float, str, str, str]] = []
+        for doc_id, document in documents.items():
+            for score, chunk in document.retriever.search_with_embedding(
+                query_vectors[0], request.top_k
+            ):
+                ranked_chunks.append((score, doc_id, document.filename, chunk))
+
+        ranked_chunks.sort(key=lambda item: item[0], reverse=True)
+        selected_chunks = ranked_chunks[: request.top_k]
+        context = [
+            f"[{filename}]\n{chunk}"
+            for _, _, filename, chunk in selected_chunks
+        ]
         answer = answer_question(
             request.question,
             context,
@@ -80,5 +107,9 @@ async def ask_question(request: AskRequest) -> AskResponse:
         logger.exception("Question answering pipeline failed")
         raise HTTPException(status_code=502, detail="Could not generate an answer") from exc
 
-    logger.info("LLM call made for document %s", request.doc_id)
-    return AskResponse(answer=answer, sources=context)
+    logger.info("LLM call made for %d uploaded documents", len(documents))
+    sources = [
+        SourceReference(doc_id=doc_id, filename=filename, text=chunk)
+        for _, doc_id, filename, chunk in selected_chunks
+    ]
+    return AskResponse(answer=answer, sources=sources)

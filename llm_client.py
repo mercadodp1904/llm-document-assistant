@@ -15,6 +15,7 @@ def answer_question(
     question: str,
     context: list[str],
     model: str = DEFAULT_MODEL,
+    history: list[dict] | None = None,
 ) -> str:
     """Ask the configured model to answer using only retrieved context."""
     api_key = os.getenv("GOOGLE_API_KEY")
@@ -24,9 +25,21 @@ def answer_question(
         raise RuntimeError("google-genai is not installed")
 
     context_text = "\n\n".join(context)
+    history_text = "\n\n".join(
+        f"User: {turn['question']}\nAssistant: {turn['answer']}"
+        for turn in history or []
+    )
+    history_section = (
+        f"Previous conversation:\n{history_text}\n\n"
+        "Use the previous conversation only to resolve references such as "
+        '"it" or "that"; do not use it as a source of facts.\n\n'
+        if history_text
+        else ""
+    )
     prompt = (
         "Answer the question using only the context below. "
         "If the answer is not in the context, say you do not know.\n\n"
+        f"{history_section}"
         f"Context:\n{context_text}\n\n"
         f"Question: {question}"
     )

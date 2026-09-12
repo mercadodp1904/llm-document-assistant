@@ -211,10 +211,14 @@ async function askQuestion() {
   askButton.disabled = true;
   setStatus("Searching the document and preparing an answer...");
   try {
+    const historyPayload = conversationHistory.map(({ question, answer }) => ({
+      question,
+      answer,
+    }));
     const response = await fetch("/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, history: historyPayload }),
     });
     if (!response.ok) {
       throw new Error(await readApiError(response, "The question could not be answered."));

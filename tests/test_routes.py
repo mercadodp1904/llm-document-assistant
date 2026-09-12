@@ -5,11 +5,13 @@ from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
 from api.main import app
+from api.auth import create_access_token
 from api.routes import StoredDocument, documents
 from retriever import InMemoryRetriever
 
 
 client = TestClient(app)
+AUTH_HEADERS = {"Authorization": f"Bearer {create_access_token('test@example.com')}"}
 
 
 def _pdf_bytes(text: str) -> bytes:
@@ -27,7 +29,9 @@ def test_ask_returns_answer_for_uploaded_document() -> None:
     try:
         with patch("api.routes.answer_question", return_value="grounded answer"):
             with patch("api.routes.generate_embeddings", return_value=[[1.0]]):
-                response = client.post("/ask", json={"question": "What?"})
+                response = client.post(
+                    "/ask", json={"question": "What?"}, headers=AUTH_HEADERS
+                )
     finally:
         documents.pop("test-doc")
 
@@ -52,7 +56,11 @@ def test_ask_ranks_chunks_across_all_documents() -> None:
     try:
         with patch("api.routes.answer_question", return_value="combined answer") as answer:
             with patch("api.routes.generate_embeddings", return_value=[[1.0, 0.0]]):
-                response = client.post("/ask", json={"question": "What?", "top_k": 2})
+                response = client.post(
+                    "/ask",
+                    json={"question": "What?", "top_k": 2},
+                    headers=AUTH_HEADERS,
+                )
     finally:
         documents.pop("first-doc")
         documents.pop("second-doc")
@@ -81,6 +89,7 @@ def test_ask_passes_only_the_last_five_history_turns() -> None:
                 response = client.post(
                     "/ask",
                     json={"question": "Follow-up?", "history": history},
+                    headers=AUTH_HEADERS,
                 )
     finally:
         documents.pop("history-doc")
@@ -124,6 +133,7 @@ def test_ask_keeps_relevant_chunks_from_all_uploaded_documents() -> None:
                                 "application/pdf",
                             )
                         },
+                        headers=AUTH_HEADERS,
                     )
                     assert response.status_code == 200
 
@@ -131,6 +141,7 @@ def test_ask_keeps_relevant_chunks_from_all_uploaded_documents() -> None:
                     response = client.post(
                         "/ask",
                         json={"question": "What projects are mentioned?", "top_k": 1},
+                        headers=AUTH_HEADERS,
                     )
     finally:
         documents.clear()
@@ -145,6 +156,7 @@ def test_ask_returns_not_found_for_unknown_document() -> None:
     response = client.post(
         "/ask",
         json={"question": "What?"},
+        headers=AUTH_HEADERS,
     )
 
     assert response.status_code == 404

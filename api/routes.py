@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import logging
 from uuid import uuid4
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
@@ -13,10 +13,13 @@ from chunking import split_text
 from embeddings import generate_embeddings
 from llm_client import DEFAULT_MODEL, answer_question
 from retriever import InMemoryRetriever
+from api.auth import create_access_token, create_user, get_current_user, get_user_by_email
+from api.auth import init_db, verify_password
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+init_db()
 
 
 @dataclass
@@ -31,6 +34,20 @@ documents: dict[str, StoredDocument] = {}
 class UploadResponse(BaseModel):
     doc_id: str
     chunk_count: int
+
+
+class AuthRequest(BaseModel):
+    email: str = Field(min_length=1)
+    password: str = Field(min_length=1)
+
+
+class RegisterResponse(BaseModel):
+    message: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
 
 
 class HistoryTurn(BaseModel):
@@ -56,8 +73,30 @@ class AskResponse(BaseModel):
     sources: list[SourceReference]
 
 
+@router.post("/register", response_model=RegisterResponse, status_code=201)
+async def register_user(request: AuthRequest) -> RegisterResponse:
+    email = request.email.strip().lower()
+    try:
+        create_user(email, request.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return RegisterResponse(message="User registered successfully")
+
+
+@router.post("/login", response_model=TokenResponse)
+async def login_user(request: AuthRequest) -> TokenResponse:
+    email = request.email.strip().lower()
+    user = get_user_by_email(email)
+    if user is None or not verify_password(request.password, user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    return TokenResponse(access_token=create_access_token(email), token_type="bearer")
+
+
 @router.post("/upload", response_model=UploadResponse)
-async def upload_document(file: UploadFile = File(...)) -> UploadResponse:
+async def upload_document(
+    file: UploadFile = File(...),
+    _current_user: str = Depends(get_current_user),
+) -> UploadResponse:
     """Extract, chunk, embed, and store an uploaded PDF."""
     try:
         if file.content_type != "application/pdf":
@@ -83,7 +122,10 @@ async def upload_document(file: UploadFile = File(...)) -> UploadResponse:
 
 
 @router.post("/ask", response_model=AskResponse)
-async def ask_question(request: AskRequest) -> AskResponse:
+async def ask_question(
+    request: AskRequest,
+    _current_user: str = Depends(get_current_user),
+) -> AskResponse:
     """Retrieve context for a question and generate a grounded answer."""
     if not documents:
         raise HTTPException(status_code=404, detail="Document not found")

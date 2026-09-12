@@ -1,29 +1,7 @@
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
-const CONVERSATION_HISTORY_KEY = "llm-doc-assistant-history";
-
-function loadConversationHistory() {
-  try {
-    const savedHistory = localStorage.getItem(CONVERSATION_HISTORY_KEY);
-    const parsedHistory = savedHistory ? JSON.parse(savedHistory) : [];
-    return Array.isArray(parsedHistory) ? parsedHistory : [];
-  } catch (error) {
-    return [];
-  }
-}
-
-function saveConversationHistory() {
-  try {
-    localStorage.setItem(
-      CONVERSATION_HISTORY_KEY,
-      JSON.stringify(conversationHistory),
-    );
-  } catch (error) {
-    // Continue without persistence when browser storage is unavailable.
-  }
-}
 
 const uploadedDocuments = [];
-const conversationHistory = loadConversationHistory();
+const conversationHistory = [];
 
 const uploadForm = document.querySelector("#upload-form");
 const fileInput = document.querySelector("#document-file");
@@ -219,16 +197,6 @@ function renderExchange(question, answer, sources) {
   exchangeElement.scrollTop = exchangeElement.scrollHeight;
 }
 
-function restoreConversationHistory() {
-  if (conversationHistory.length === 0) {
-    return;
-  }
-  exchangeElement.replaceChildren();
-  for (const exchange of conversationHistory) {
-    renderExchange(exchange.question, exchange.answer, exchange.sources || []);
-  }
-}
-
 async function askQuestion() {
   const question = questionInput.value.trim();
   if (uploadedDocuments.length === 0) {
@@ -262,7 +230,6 @@ async function askQuestion() {
       sources: data.sources,
       timestamp: new Date(),
     });
-    saveConversationHistory();
     renderExchange(question, data.answer, data.sources);
     setStatus("");
   } catch (error) {
@@ -294,5 +261,3 @@ askForm.addEventListener("submit", (event) => {
   event.preventDefault();
   askQuestion();
 });
-
-restoreConversationHistory();

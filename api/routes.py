@@ -101,7 +101,8 @@ async def ask_question(request: AskRequest) -> AskResponse:
                 ranked_chunks.append((score, doc_id, document.filename, chunk))
 
         ranked_chunks.sort(key=lambda item: item[0], reverse=True)
-        selected_chunks = ranked_chunks[: request.top_k]
+        context_limit = max(request.top_k, len(documents) * request.top_k)
+        selected_chunks = ranked_chunks[:context_limit]
         context = [
             f"[{filename}]\n{chunk}"
             for _, _, filename, chunk in selected_chunks

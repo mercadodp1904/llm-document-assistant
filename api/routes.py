@@ -17,6 +17,8 @@ from retriever import InMemoryRetriever
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
 @dataclass
 class StoredDocument:
     filename: str
@@ -31,10 +33,16 @@ class UploadResponse(BaseModel):
     chunk_count: int
 
 
+class HistoryTurn(BaseModel):
+    question: str
+    answer: str
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=1)
     top_k: int = Field(default=3, ge=1, le=20)
     model: str = DEFAULT_MODEL
+    history: list[HistoryTurn] = Field(default_factory=list)
 
 
 class SourceReference(BaseModel):
@@ -102,6 +110,7 @@ async def ask_question(request: AskRequest) -> AskResponse:
             request.question,
             context,
             model=request.model,
+            history=[turn.model_dump() for turn in request.history[-5:]],
         )
     except Exception as exc:
         logger.exception("Question answering pipeline failed")

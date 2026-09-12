@@ -68,6 +68,27 @@ def test_ask_ranks_chunks_across_all_documents() -> None:
     ]
 
 
+def test_ask_passes_only_the_last_five_history_turns() -> None:
+    retriever = InMemoryRetriever(["retrieved context"], [[1.0]], lambda _: [[1.0]])
+    documents["history-doc"] = StoredDocument("report.pdf", retriever)
+    history = [
+        {"question": f"Question {index}", "answer": f"Answer {index}"}
+        for index in range(6)
+    ]
+    try:
+        with patch("api.routes.answer_question", return_value="answer") as answer:
+            with patch("api.routes.generate_embeddings", return_value=[[1.0]]):
+                response = client.post(
+                    "/ask",
+                    json={"question": "Follow-up?", "history": history},
+                )
+    finally:
+        documents.pop("history-doc")
+
+    assert response.status_code == 200
+    assert answer.call_args.kwargs["history"] == history[-5:]
+
+
 def test_ask_returns_not_found_for_unknown_document() -> None:
     response = client.post(
         "/ask",

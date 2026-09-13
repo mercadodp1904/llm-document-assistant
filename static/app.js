@@ -1,8 +1,19 @@
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
+const TOKEN_KEY = "access_token";
 
 const uploadedDocuments = [];
 const conversationHistory = [];
 
+const authScreen = document.querySelector("#auth-screen");
+const shell = document.querySelector(".shell");
+const loginForm = document.querySelector("#login-form");
+const registerForm = document.querySelector("#register-form");
+const authToggle = document.querySelector("#auth-toggle");
+const authTitle = document.querySelector("#auth-title");
+const authDescription = document.querySelector("#auth-description");
+const loginError = document.querySelector("#login-error");
+const registerError = document.querySelector("#register-error");
+const logoutButton = document.querySelector("#logout-button");
 const uploadForm = document.querySelector("#upload-form");
 const fileInput = document.querySelector("#document-file");
 const fileLabel = document.querySelector("#file-label");
@@ -16,6 +27,68 @@ const questionInput = document.querySelector("#question");
 const askButton = document.querySelector("#ask-button");
 const statusElement = document.querySelector("#status");
 const exchangeElement = document.querySelector("#exchange");
+
+function getToken() {
+  return sessionStorage.getItem(TOKEN_KEY);
+}
+
+function setAuthMode(isRegistering) {
+  loginForm.hidden = isRegistering;
+  registerForm.hidden = !isRegistering;
+  authTitle.textContent = isRegistering ? "Create your account" : "Welcome back";
+  authDescription.textContent = isRegistering
+    ? "Register to ask questions about your documents."
+    : "Sign in to ask questions about your documents.";
+  authToggle.textContent = isRegistering
+    ? "Already have an account? Log in"
+    : "Need an account? Register";
+  loginError.hidden = true;
+  registerError.hidden = true;
+}
+
+function showMainApp() {
+  authScreen.hidden = true;
+  shell.hidden = false;
+}
+
+function showAuthScreen() {
+  authScreen.hidden = false;
+  shell.hidden = true;
+  setAuthMode(false);
+}
+
+function resetWorkspace() {
+  uploadedDocuments.length = 0;
+  conversationHistory.length = 0;
+  documentList.replaceChildren();
+  uploadedDocumentsElement.hidden = true;
+  uploadConfirmation.hidden = true;
+  exchangeElement.innerHTML = `<div class="empty-state"><span class="empty-icon" aria-hidden="true">?</span><h2>What would you like to know?</h2><p>Upload a PDF, then ask a question to start a conversation.</p></div>`;
+  questionInput.value = "";
+  questionInput.disabled = true;
+  askButton.disabled = true;
+  fileInput.value = "";
+  updateFileLabel();
+  setStatus("");
+}
+
+function logout() {
+  sessionStorage.removeItem(TOKEN_KEY);
+  resetWorkspace();
+  showAuthScreen();
+}
+
+async function authenticatedFetch(url, options = {}) {
+  const token = getToken();
+  const headers = new Headers(options.headers || {});
+  headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(url, { ...options, headers });
+  if (response.status === 401) {
+    logout();
+    throw new Error("Your session has expired. Please log in again.");
+  }
+  return response;
+}
 
 function setStatus(message) {
   statusElement.textContent = message;
@@ -144,7 +217,7 @@ async function uploadDocument() {
   uploadButton.disabled = true;
   setStatus("Uploading and indexing your document...");
   try {
-    const response = await fetch("/upload", { method: "POST", body: formData });
+    const response = await authenticatedFetch("/upload", { method: "POST", body: formData });
     if (!response.ok) {
       throw new Error(await readApiError(response, "Upload failed. Try another PDF."));
     }
@@ -215,7 +288,7 @@ async function askQuestion() {
       question,
       answer,
     }));
-    const response = await fetch("/ask", {
+    const response = await authenticatedFetch("/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question, history: historyPayload }),
@@ -236,6 +309,42 @@ async function askQuestion() {
     showError(error.message || "The question could not be answered.");
   } finally {
     askButton.disabled = false;
+  }
+}
+
+async function submitAuthForm(form, errorElement, isRegistering) {
+  errorElement.hidden = true;
+  const formData = new FormData(form);
+  const submitButton = form.querySelector("button[type=submit]");
+  submitButton.disabled = true;
+  try {
+    const response = await fetch(isRegistering ? "/register" : "/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: formData.get("email"),
+        password: formData.get("password"),
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(await readApiError(response, "Authentication failed. Please try again."));
+    }
+    if (isRegistering) {
+      form.reset();
+      setAuthMode(false);
+      loginError.textContent = "Account created. Log in to continue.";
+      loginError.hidden = false;
+      return;
+    }
+    const data = await response.json();
+    sessionStorage.setItem(TOKEN_KEY, data.access_token);
+    form.reset();
+    showMainApp();
+  } catch (error) {
+    errorElement.textContent = error.message || "Authentication failed. Please try again.";
+    errorElement.hidden = false;
+  } finally {
+    submitButton.disabled = false;
   }
 }
 
@@ -261,3 +370,19 @@ askForm.addEventListener("submit", (event) => {
   event.preventDefault();
   askQuestion();
 });
+authToggle.addEventListener("click", () => setAuthMode(registerForm.hidden));
+loginForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitAuthForm(loginForm, loginError, false);
+});
+registerForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitAuthForm(registerForm, registerError, true);
+});
+logoutButton.addEventListener("click", logout);
+
+if (getToken()) {
+  showMainApp();
+} else {
+  showAuthScreen();
+}

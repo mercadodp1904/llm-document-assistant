@@ -1,5 +1,7 @@
 """Authentication helpers backed by a small SQLite users table."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
@@ -18,10 +20,15 @@ password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def _get_connection() -> sqlite3.Connection:
+@contextmanager
+def _get_connection() -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(DATABASE_PATH)
     connection.row_factory = sqlite3.Row
-    return connection
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
 
 
 def init_db() -> None:

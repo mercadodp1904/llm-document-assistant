@@ -24,6 +24,10 @@ cp .env.example .env  # then fill in your API key
 uvicorn api.main:app --reload
 ```
 
+Set `JWT_SECRET` in `.env` before starting the API. Register with `POST /register`,
+log in with `POST /login` to receive a 30-minute bearer token, and send that
+token in the `Authorization` header when calling `/upload` or `/ask`.
+
 ## Current pipeline
 
 The initial RAG pipeline is available through two endpoints:

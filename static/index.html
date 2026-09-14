@@ -8,6 +8,31 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <section id="auth-screen" class="auth-screen" aria-labelledby="auth-title" hidden>
+    <div class="auth-panel">
+      <div class="brand-mark" aria-hidden="true">D</div>
+      <p class="eyebrow">Document Assistant</p>
+      <h1 id="auth-title">Welcome back</h1>
+      <p id="auth-description" class="auth-description">Sign in to ask questions about your documents.</p>
+      <form id="login-form" class="auth-form">
+        <label for="login-email">Email</label>
+        <input id="login-email" name="email" type="email" autocomplete="email" required>
+        <label for="login-password">Password</label>
+        <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+        <p id="login-error" class="auth-error" role="alert" hidden></p>
+        <button class="button button-primary" type="submit">Log in</button>
+      </form>
+      <form id="register-form" class="auth-form" hidden>
+        <label for="register-email">Email</label>
+        <input id="register-email" name="email" type="email" autocomplete="email" required>
+        <label for="register-password">Password</label>
+        <input id="register-password" name="password" type="password" autocomplete="new-password" required>
+        <p id="register-error" class="auth-error" role="alert" hidden></p>
+        <button class="button button-primary" type="submit">Create account</button>
+      </form>
+      <button id="auth-toggle" class="auth-toggle" type="button">Need an account? Register</button>
+    </div>
+  </section>
   <main class="shell">
     <header class="app-header">
       <div class="brand-mark" aria-hidden="true">D</div>
@@ -41,6 +66,7 @@
           <ul id="document-list"></ul>
         </div>
         <p class="sidebar-note">Upload multiple documents to search them together.</p>
+        <button id="logout-button" class="logout-button" type="button">Log out</button>
       </aside>
 
       <section class="chat-panel" aria-label="Chat with your documents">

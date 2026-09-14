@@ -1,9 +1,12 @@
 from io import BytesIO
+from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
+from api import auth
 from api.main import app
 from api.auth import create_access_token
 from api.routes import StoredDocument, documents
@@ -12,6 +15,15 @@ from retriever import InMemoryRetriever
 
 client = TestClient(app)
 AUTH_HEADERS = {"Authorization": f"Bearer {create_access_token('test@example.com')}"}
+
+
+@pytest.fixture
+def history_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> TestClient:
+    monkeypatch.setattr(auth, "DATABASE_PATH", tmp_path / "history.db")
+    auth.init_db()
+    return TestClient(app)
 
 
 def _pdf_bytes(text: str) -> bytes:
@@ -42,6 +54,73 @@ def test_ask_returns_answer_for_uploaded_document() -> None:
             {"doc_id": "test-doc", "filename": "report.pdf", "text": "retrieved context"}
         ],
     }
+
+
+def test_successful_ask_appears_in_history(history_client: TestClient) -> None:
+    retriever = InMemoryRetriever(["retrieved context"], [[1.0]], lambda _: [[1.0]])
+    documents["history-doc"] = StoredDocument("report.pdf", retriever)
+    headers = {"Authorization": f"Bearer {create_access_token('history@example.com')}"}
+    try:
+        with patch("api.routes.answer_question", return_value="grounded answer"):
+            with patch("api.routes.generate_embeddings", return_value=[[1.0]]):
+                ask_response = history_client.post(
+                    "/ask",
+                    json={"question": "What is this?"},
+                    headers=headers,
+                )
+        history_response = history_client.get("/history", headers=headers)
+    finally:
+        documents.pop("history-doc")
+
+    assert ask_response.status_code == 200
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert len(history) == 1
+    assert history[0]["question"] == "What is this?"
+    assert history[0]["answer"] == "grounded answer"
+    assert history[0]["created_at"]
+
+
+def test_history_only_returns_calling_users_turns(history_client: TestClient) -> None:
+    auth.save_conversation_turn("first@example.com", "First question", "First answer")
+    auth.save_conversation_turn("second@example.com", "Second question", "Second answer")
+
+    response = history_client.get(
+        "/history",
+        headers={
+            "Authorization": f"Bearer {create_access_token('first@example.com')}"
+        },
+    )
+
+    assert response.status_code == 200
+    assert [turn["question"] for turn in response.json()] == ["First question"]
+
+
+def test_history_returns_only_the_20_most_recent_turns(
+    history_client: TestClient,
+) -> None:
+    for index in range(21):
+        auth.save_conversation_turn(
+            "history@example.com", f"Question {index}", f"Answer {index}"
+        )
+
+    response = history_client.get(
+        "/history",
+        headers={
+            "Authorization": f"Bearer {create_access_token('history@example.com')}"
+        },
+    )
+
+    assert response.status_code == 200
+    assert [turn["question"] for turn in response.json()] == [
+        f"Question {index}" for index in range(1, 21)
+    ]
+
+
+def test_history_requires_authentication(history_client: TestClient) -> None:
+    response = history_client.get("/history")
+
+    assert response.status_code == 401
 
 
 def test_ask_ranks_chunks_across_all_documents() -> None:

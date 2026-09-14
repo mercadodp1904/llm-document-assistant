@@ -14,7 +14,8 @@ from embeddings import generate_embeddings
 from llm_client import DEFAULT_MODEL, answer_question
 from retriever import InMemoryRetriever
 from api.auth import create_access_token, create_user, get_current_user, get_user_by_email
-from api.auth import init_db, verify_password
+from api.auth import get_conversation_history, init_db, save_conversation_turn
+from api.auth import verify_password
 
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,10 @@ class TokenResponse(BaseModel):
 class HistoryTurn(BaseModel):
     question: str
     answer: str
+
+
+class HistoryResponseTurn(HistoryTurn):
+    created_at: str
 
 
 class AskRequest(BaseModel):
@@ -124,7 +129,7 @@ async def upload_document(
 @router.post("/ask", response_model=AskResponse)
 async def ask_question(
     request: AskRequest,
-    _current_user: str = Depends(get_current_user),
+    current_user: str = Depends(get_current_user),
 ) -> AskResponse:
     """Retrieve context for a question and generate a grounded answer."""
     if not documents:
@@ -160,8 +165,23 @@ async def ask_question(
         raise HTTPException(status_code=502, detail="Could not generate an answer") from exc
 
     logger.info("LLM call made for %d uploaded documents", len(documents))
+    save_conversation_turn(current_user, request.question, answer)
     sources = [
         SourceReference(doc_id=doc_id, filename=filename, text=chunk)
         for _, doc_id, filename, chunk in selected_chunks
     ]
     return AskResponse(answer=answer, sources=sources)
+
+
+@router.get("/history", response_model=list[HistoryResponseTurn])
+async def get_history(
+    current_user: str = Depends(get_current_user),
+) -> list[HistoryResponseTurn]:
+    return [
+        HistoryResponseTurn(
+            question=row["question"],
+            answer=row["answer"],
+            created_at=row["created_at"],
+        )
+        for row in get_conversation_history(current_user)
+    ]

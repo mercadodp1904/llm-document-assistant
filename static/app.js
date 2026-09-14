@@ -3,6 +3,7 @@ const TOKEN_KEY = "access_token";
 
 const uploadedDocuments = [];
 const conversationHistory = [];
+let conversationHistoryLoaded = false;
 
 const authScreen = document.querySelector("#auth-screen");
 const shell = document.querySelector(".shell");
@@ -49,6 +50,8 @@ function setAuthMode(isRegistering) {
 function showMainApp() {
   authScreen.hidden = true;
   shell.hidden = false;
+  conversationHistoryLoaded = false;
+  loadConversationHistory();
 }
 
 function showAuthScreen() {
@@ -60,6 +63,7 @@ function showAuthScreen() {
 function resetWorkspace() {
   uploadedDocuments.length = 0;
   conversationHistory.length = 0;
+  conversationHistoryLoaded = false;
   documentList.replaceChildren();
   uploadedDocumentsElement.hidden = true;
   uploadConfirmation.hidden = true;
@@ -192,8 +196,8 @@ function onUploadSuccess(fileName, response) {
   uploadConfirmation.textContent = `✓ ${fileName} uploaded — ready for questions`;
   uploadConfirmation.hidden = false;
   renderUploadedDocuments();
-  questionInput.disabled = false;
-  askButton.disabled = false;
+  questionInput.disabled = !conversationHistoryLoaded;
+  askButton.disabled = !conversationHistoryLoaded;
   setStatus("");
 }
 
@@ -230,9 +234,7 @@ async function uploadDocument() {
 }
 
 function renderExchange(question, answer, sources) {
-  if (conversationHistory.length === 0) {
-    exchangeElement.replaceChildren();
-  }
+  exchangeElement.querySelector(".empty-state")?.remove();
 
   const exchange = document.createElement("article");
   exchange.className = "message-exchange";
@@ -268,6 +270,27 @@ function renderExchange(question, answer, sources) {
 
   exchangeElement.append(exchange);
   exchangeElement.scrollTop = exchangeElement.scrollHeight;
+}
+
+async function loadConversationHistory() {
+  try {
+    const response = await authenticatedFetch("/history");
+    if (!response.ok) {
+      throw new Error(await readApiError(response, "Conversation history could not be loaded."));
+    }
+    const history = await response.json();
+    for (const turn of history) {
+      renderExchange(turn.question, turn.answer, []);
+    }
+  } catch (error) {
+    showError(error.message || "Conversation history could not be loaded.");
+  } finally {
+    conversationHistoryLoaded = true;
+    if (uploadedDocuments.length > 0) {
+      questionInput.disabled = false;
+      askButton.disabled = false;
+    }
+  }
 }
 
 async function askQuestion() {

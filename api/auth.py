@@ -32,7 +32,7 @@ def _get_connection() -> Iterator[sqlite3.Connection]:
 
 
 def init_db() -> None:
-    """Create the users table when the application starts."""
+    """Create application tables when the application starts."""
     with _get_connection() as connection:
         connection.execute(
             """
@@ -44,6 +44,43 @@ def init_db() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversation_turns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_email TEXT NOT NULL,
+                question TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+
+def save_conversation_turn(user_email: str, question: str, answer: str) -> None:
+    with _get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO conversation_turns (user_email, question, answer)
+            VALUES (?, ?, ?)
+            """,
+            (user_email, question, answer),
+        )
+
+
+def get_conversation_history(user_email: str, limit: int = 20) -> list[sqlite3.Row]:
+    with _get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT question, answer, created_at
+            FROM conversation_turns
+            WHERE user_email = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (user_email, limit),
+        ).fetchall()
+    return list(reversed(rows))
 
 
 def get_user_by_email(email: str) -> sqlite3.Row | None:

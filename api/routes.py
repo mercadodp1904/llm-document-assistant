@@ -14,7 +14,8 @@ from embeddings import generate_embeddings
 from llm_client import DEFAULT_MODEL, answer_question
 from retriever import InMemoryRetriever
 from api.auth import create_access_token, create_user, get_current_user, get_user_by_email
-from api.auth import get_conversation_history, init_db, save_conversation_turn
+from api.auth import create_chat_session, get_chat_sessions, get_conversation_history
+from api.auth import init_db, save_conversation_turn
 from api.auth import verify_password
 
 
@@ -49,6 +50,21 @@ class RegisterResponse(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str
+
+
+class SessionCreateResponse(BaseModel):
+    session_id: str
+    created_at: str
+
+
+class SessionResponse(BaseModel):
+    session_id: str
+    title: str | None
+    created_at: str
+
+
+class SessionsResponse(BaseModel):
+    sessions: list[SessionResponse]
 
 
 class HistoryTurn(BaseModel):
@@ -95,6 +111,33 @@ async def login_user(request: AuthRequest) -> TokenResponse:
     if user is None or not verify_password(request.password, user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     return TokenResponse(access_token=create_access_token(email), token_type="bearer")
+
+
+@router.post("/sessions", response_model=SessionCreateResponse)
+async def create_session(
+    current_user: str = Depends(get_current_user),
+) -> SessionCreateResponse:
+    session = create_chat_session(current_user)
+    return SessionCreateResponse(
+        session_id=session["session_id"],
+        created_at=session["created_at"],
+    )
+
+
+@router.get("/sessions", response_model=SessionsResponse)
+async def list_sessions(
+    current_user: str = Depends(get_current_user),
+) -> SessionsResponse:
+    return SessionsResponse(
+        sessions=[
+            SessionResponse(
+                session_id=session["session_id"],
+                title=session["title"],
+                created_at=session["created_at"],
+            )
+            for session in get_chat_sessions(current_user)
+        ]
+    )
 
 
 @router.post("/upload", response_model=UploadResponse)

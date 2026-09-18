@@ -26,6 +26,15 @@ def history_client(
     return TestClient(app)
 
 
+@pytest.fixture
+def sessions_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> TestClient:
+    monkeypatch.setattr(auth, "DATABASE_PATH", tmp_path / "sessions.db")
+    auth.init_db()
+    return TestClient(app)
+
+
 def _pdf_bytes(text: str) -> bytes:
     writer = PdfWriter()
     page = writer.add_blank_page(width=200, height=200)
@@ -54,6 +63,58 @@ def test_ask_returns_answer_for_uploaded_document() -> None:
             {"doc_id": "test-doc", "filename": "report.pdf", "text": "retrieved context"}
         ],
     }
+
+
+def test_create_session_requires_authentication(sessions_client: TestClient) -> None:
+    response = sessions_client.post("/sessions")
+
+    assert response.status_code == 401
+
+
+def test_create_session_returns_session_id(sessions_client: TestClient) -> None:
+    headers = {
+        "Authorization": f"Bearer {create_access_token('session@example.com')}"
+    }
+
+    response = sessions_client.post("/sessions", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["session_id"]
+    assert response.json()["created_at"]
+
+
+def test_list_sessions_requires_authentication(sessions_client: TestClient) -> None:
+    response = sessions_client.get("/sessions")
+
+    assert response.status_code == 401
+
+
+def test_list_sessions_is_isolated_and_ordered(
+    sessions_client: TestClient,
+) -> None:
+    first_headers = {
+        "Authorization": f"Bearer {create_access_token('first@example.com')}"
+    }
+    second_headers = {
+        "Authorization": f"Bearer {create_access_token('second@example.com')}"
+    }
+
+    first_session = sessions_client.post("/sessions", headers=first_headers).json()
+    second_session = sessions_client.post("/sessions", headers=first_headers).json()
+    sessions_client.post("/sessions", headers=second_headers)
+
+    response = sessions_client.get("/sessions", headers=first_headers)
+
+    assert response.status_code == 200
+    sessions = response.json()["sessions"]
+    assert {session["session_id"] for session in sessions} == {
+        first_session["session_id"],
+        second_session["session_id"],
+    }
+    assert all(session["title"] is None for session in sessions)
+    assert [session["created_at"] for session in sessions] == sorted(
+        (session["created_at"] for session in sessions), reverse=True
+    )
 
 
 def test_successful_ask_appears_in_history(history_client: TestClient) -> None:

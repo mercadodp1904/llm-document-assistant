@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
 import sqlite3
+from uuid import uuid4
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -55,6 +56,63 @@ def init_db() -> None:
             )
             """
         )
+        init_chat_sessions_table(connection)
+
+
+def init_chat_sessions_table(connection: sqlite3.Connection | None = None) -> None:
+    """Create the chat sessions table if it does not exist."""
+    if connection is not None:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                session_id TEXT PRIMARY KEY,
+                user_email TEXT NOT NULL REFERENCES users(email),
+                title TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        return
+
+    with _get_connection() as owned_connection:
+        init_chat_sessions_table(owned_connection)
+
+
+def create_chat_session(user_email: str) -> sqlite3.Row:
+    session_id = uuid4().hex
+    with _get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO chat_sessions (session_id, user_email, title)
+            VALUES (?, ?, ?)
+            """,
+            (session_id, user_email, None),
+        )
+        session = connection.execute(
+            """
+            SELECT session_id, created_at
+            FROM chat_sessions
+            WHERE session_id = ?
+            """,
+            (session_id,),
+        ).fetchone()
+    if session is None:
+        raise RuntimeError("Could not create chat session")
+    return session
+
+
+def get_chat_sessions(user_email: str) -> list[sqlite3.Row]:
+    with _get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT session_id, title, created_at
+            FROM chat_sessions
+            WHERE user_email = ?
+            ORDER BY created_at DESC, session_id DESC
+            """,
+            (user_email,),
+        ).fetchall()
+    return list(rows)
 
 
 def save_conversation_turn(user_email: str, question: str, answer: str) -> None:

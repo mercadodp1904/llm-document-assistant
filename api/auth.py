@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
 import sqlite3
+import json
 from uuid import uuid4
 
 from fastapi import Depends, HTTPException, status
@@ -45,18 +46,20 @@ def init_db() -> None:
             )
             """
         )
+        init_chat_sessions_table(connection)
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS conversation_turns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_email TEXT NOT NULL,
+                session_id TEXT NOT NULL REFERENCES chat_sessions(session_id),
                 question TEXT NOT NULL,
                 answer TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
-        init_chat_sessions_table(connection)
+        init_session_documents_table(connection)
 
 
 def init_chat_sessions_table(connection: sqlite3.Connection | None = None) -> None:
@@ -115,30 +118,104 @@ def get_chat_sessions(user_email: str) -> list[sqlite3.Row]:
     return list(rows)
 
 
-def save_conversation_turn(user_email: str, question: str, answer: str) -> None:
+def init_session_documents_table(
+    connection: sqlite3.Connection | None = None,
+) -> None:
+    """Create the session documents table if it does not exist."""
+    if connection is not None:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS session_documents (
+                doc_id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL REFERENCES chat_sessions(session_id),
+                filename TEXT NOT NULL,
+                chunks TEXT NOT NULL,
+                vectors TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        return
+
+    with _get_connection() as owned_connection:
+        init_session_documents_table(owned_connection)
+
+
+def get_chat_session(session_id: str) -> sqlite3.Row | None:
+    with _get_connection() as connection:
+        return connection.execute(
+            """
+            SELECT session_id, user_email, title, created_at
+            FROM chat_sessions
+            WHERE session_id = ?
+            """,
+            (session_id,),
+        ).fetchone()
+
+
+def save_conversation_turn(
+    user_email: str,
+    session_id: str,
+    question: str,
+    answer: str,
+) -> None:
     with _get_connection() as connection:
         connection.execute(
             """
-            INSERT INTO conversation_turns (user_email, question, answer)
-            VALUES (?, ?, ?)
+            INSERT INTO conversation_turns (
+                user_email, session_id, question, answer
+            )
+            VALUES (?, ?, ?, ?)
             """,
-            (user_email, question, answer),
+            (user_email, session_id, question, answer),
         )
 
 
-def get_conversation_history(user_email: str, limit: int = 20) -> list[sqlite3.Row]:
+def get_conversation_history(session_id: str, limit: int = 20) -> list[sqlite3.Row]:
     with _get_connection() as connection:
         rows = connection.execute(
             """
             SELECT question, answer, created_at
             FROM conversation_turns
-            WHERE user_email = ?
+            WHERE session_id = ?
             ORDER BY id DESC
             LIMIT ?
             """,
-            (user_email, limit),
+            (session_id, limit),
         ).fetchall()
     return list(reversed(rows))
+
+
+def save_session_document(
+    session_id: str,
+    filename: str,
+    chunks: list[str],
+    vectors: list[list[float]],
+) -> str:
+    doc_id = uuid4().hex
+    with _get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO session_documents (doc_id, session_id, filename, chunks, vectors)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (doc_id, session_id, filename, json.dumps(chunks), json.dumps(vectors)),
+        )
+    return doc_id
+
+
+def get_session_documents(session_id: str) -> list[sqlite3.Row]:
+    with _get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT doc_id, filename, chunks, vectors
+            FROM session_documents
+            WHERE session_id = ?
+            ORDER BY created_at ASC, doc_id ASC
+            """,
+            (session_id,),
+        ).fetchall()
+    return list(rows)
 
 
 def get_user_by_email(email: str) -> sqlite3.Row | None:

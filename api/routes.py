@@ -1,11 +1,10 @@
 """HTTP routes for document upload and question answering."""
 
+import json
 from io import BytesIO
-from dataclasses import dataclass
 import logging
-from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
@@ -13,24 +12,17 @@ from chunking import split_text
 from embeddings import generate_embeddings
 from llm_client import DEFAULT_MODEL, answer_question
 from retriever import InMemoryRetriever
-from api.auth import create_access_token, create_user, get_current_user, get_user_by_email
+from api.auth import create_access_token, create_user, get_chat_session
+from api.auth import get_current_user, get_user_by_email
 from api.auth import create_chat_session, get_chat_sessions, get_conversation_history
-from api.auth import init_db, save_conversation_turn
+from api.auth import get_session_documents, init_db, save_conversation_turn
+from api.auth import save_session_document
 from api.auth import verify_password
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 init_db()
-
-
-@dataclass
-class StoredDocument:
-    filename: str
-    retriever: InMemoryRetriever
-
-
-documents: dict[str, StoredDocument] = {}
 
 
 class UploadResponse(BaseModel):
@@ -77,6 +69,7 @@ class HistoryResponseTurn(HistoryTurn):
 
 
 class AskRequest(BaseModel):
+    session_id: str = Field(min_length=1)
     question: str = Field(min_length=1)
     top_k: int = Field(default=3, ge=1, le=20)
     model: str = DEFAULT_MODEL
@@ -92,6 +85,17 @@ class SourceReference(BaseModel):
 class AskResponse(BaseModel):
     answer: str
     sources: list[SourceReference]
+
+
+def _require_owned_session(session_id: str, current_user: str) -> None:
+    session = get_chat_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session["user_email"] != current_user:
+        raise HTTPException(
+            status_code=403,
+            detail="Session does not belong to this user",
+        )
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=201)
@@ -143,9 +147,11 @@ async def list_sessions(
 @router.post("/upload", response_model=UploadResponse)
 async def upload_document(
     file: UploadFile = File(...),
-    _current_user: str = Depends(get_current_user),
+    session_id: str = Form(...),
+    current_user: str = Depends(get_current_user),
 ) -> UploadResponse:
     """Extract, chunk, embed, and store an uploaded PDF."""
+    _require_owned_session(session_id, current_user)
     try:
         if file.content_type != "application/pdf":
             raise HTTPException(status_code=400, detail="Only PDF files are supported")
@@ -156,15 +162,18 @@ async def upload_document(
         if not chunks:
             raise HTTPException(status_code=400, detail="PDF does not contain extractable text")
         vectors = generate_embeddings(chunks)
-        retriever = InMemoryRetriever(chunks, vectors, generate_embeddings)
     except HTTPException:
         raise
     except Exception as exc:
         logger.exception("Document upload pipeline failed")
         raise HTTPException(status_code=400, detail="Could not process the PDF") from exc
 
-    doc_id = str(uuid4())
-    documents[doc_id] = StoredDocument(filename=file.filename or "uploaded.pdf", retriever=retriever)
+    doc_id = save_session_document(
+        session_id,
+        file.filename or "uploaded.pdf",
+        chunks,
+        vectors,
+    )
     logger.info("Chunking done and embeddings generated for document %s", doc_id)
     return UploadResponse(doc_id=doc_id, chunk_count=len(chunks))
 
@@ -175,7 +184,9 @@ async def ask_question(
     current_user: str = Depends(get_current_user),
 ) -> AskResponse:
     """Retrieve context for a question and generate a grounded answer."""
-    if not documents:
+    _require_owned_session(request.session_id, current_user)
+    session_documents = get_session_documents(request.session_id)
+    if not session_documents:
         raise HTTPException(status_code=404, detail="Document not found")
 
     try:
@@ -184,14 +195,19 @@ async def ask_question(
             raise ValueError("Could not generate a query embedding")
 
         ranked_chunks: list[tuple[float, str, str, str]] = []
-        for doc_id, document in documents.items():
-            for score, chunk in document.retriever.search_with_embedding(
+        for document in session_documents:
+            chunks = json.loads(document["chunks"])
+            vectors = json.loads(document["vectors"])
+            retriever = InMemoryRetriever(chunks, vectors, generate_embeddings)
+            for score, chunk in retriever.search_with_embedding(
                 query_vectors[0], request.top_k
             ):
-                ranked_chunks.append((score, doc_id, document.filename, chunk))
+                ranked_chunks.append(
+                    (score, document["doc_id"], document["filename"], chunk)
+                )
 
         ranked_chunks.sort(key=lambda item: item[0], reverse=True)
-        context_limit = max(request.top_k, len(documents) * request.top_k)
+        context_limit = max(request.top_k, len(session_documents) * request.top_k)
         selected_chunks = ranked_chunks[:context_limit]
         context = [
             f"[{filename}]\n{chunk}"
@@ -207,8 +223,13 @@ async def ask_question(
         logger.exception("Question answering pipeline failed")
         raise HTTPException(status_code=502, detail="Could not generate an answer") from exc
 
-    logger.info("LLM call made for %d uploaded documents", len(documents))
-    save_conversation_turn(current_user, request.question, answer)
+    logger.info("LLM call made for %d uploaded documents", len(session_documents))
+    save_conversation_turn(
+        current_user,
+        request.session_id,
+        request.question,
+        answer,
+    )
     sources = [
         SourceReference(doc_id=doc_id, filename=filename, text=chunk)
         for _, doc_id, filename, chunk in selected_chunks
@@ -218,13 +239,15 @@ async def ask_question(
 
 @router.get("/history", response_model=list[HistoryResponseTurn])
 async def get_history(
+    session_id: str = Query(...),
     current_user: str = Depends(get_current_user),
 ) -> list[HistoryResponseTurn]:
+    _require_owned_session(session_id, current_user)
     return [
         HistoryResponseTurn(
             question=row["question"],
             answer=row["answer"],
             created_at=row["created_at"],
         )
-        for row in get_conversation_history(current_user)
+        for row in get_conversation_history(session_id)
     ]

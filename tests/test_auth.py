@@ -65,15 +65,16 @@ def test_protected_route_requires_valid_token(auth_client: TestClient) -> None:
     token_response = auth_client.post(
         "/login", json={"email": "user@example.com", "password": "secret"}
     )
-    without_token = auth_client.post("/ask", json={"question": "What?"})
+    request_body = {"session_id": "missing", "question": "What?"}
+    without_token = auth_client.post("/ask", json=request_body)
     with_invalid_token = auth_client.post(
         "/ask",
-        json={"question": "What?"},
+        json=request_body,
         headers={"Authorization": "Bearer invalid-token"},
     )
     with_valid_token = auth_client.post(
         "/ask",
-        json={"question": "What?"},
+        json=request_body,
         headers={"Authorization": f"Bearer {token_response.json()['access_token']}"},
     )
 

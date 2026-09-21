@@ -294,6 +294,42 @@ input[type="file"] {
   padding-top: 18px;
 }
 
+.session-list {
+  list-style: none;
+  margin: 14px 0 22px;
+  padding: 0;
+}
+
+.session-list li {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font: 0.8rem/1.4 Arial, sans-serif;
+  gap: 8px;
+  overflow-wrap: anywhere;
+  padding: 8px 6px;
+}
+
+.session-list li::before {
+  background: var(--line);
+  content: "";
+  display: block;
+  flex: 0 0 6px;
+  height: 6px;
+}
+
+.session-list li:hover {
+  background: var(--soft-accent);
+}
+
+.session-list li.active {
+  background: var(--soft-accent);
+}
+
+.session-list li.active::before {
+  background: var(--accent);
+}
+
 .uploaded-documents h3 {
   color: var(--muted);
   font: 700 0.65rem Arial, sans-serif;

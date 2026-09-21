@@ -156,6 +156,82 @@ def test_list_sessions_is_isolated_and_ordered(
     )
 
 
+def test_list_session_documents_requires_authentication(
+    sessions_client: TestClient,
+) -> None:
+    response = sessions_client.get("/sessions/missing/documents")
+
+    assert response.status_code == 401
+
+
+def test_list_session_documents_rejects_unknown_session(
+    sessions_client: TestClient,
+) -> None:
+    response = sessions_client.get(
+        "/sessions/missing/documents", headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 404
+
+
+def test_list_session_documents_rejects_foreign_session(
+    sessions_client: TestClient,
+) -> None:
+    owner_headers = {
+        "Authorization": f"Bearer {create_access_token('owner@example.com')}"
+    }
+    session_id = _create_session(sessions_client, owner_headers)
+
+    response = sessions_client.get(
+        f"/sessions/{session_id}/documents", headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 403
+
+
+def test_list_session_documents_returns_uploaded_documents(
+    sessions_client: TestClient,
+) -> None:
+    session_id = _create_session(sessions_client, AUTH_HEADERS)
+    with patch(
+        "api.routes.PdfReader",
+        side_effect=[FakeReader("first document"), FakeReader("second document")],
+    ):
+        with patch("api.routes.generate_embeddings", return_value=[[1.0]]):
+            first_upload = _upload_document(
+                sessions_client, AUTH_HEADERS, session_id, "first.pdf"
+            )
+            second_upload = _upload_document(
+                sessions_client, AUTH_HEADERS, session_id, "second.pdf"
+            )
+
+    response = sessions_client.get(
+        f"/sessions/{session_id}/documents", headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 200
+    assert {
+        document["doc_id"]: document["filename"]
+        for document in response.json()["documents"]
+    } == {
+        first_upload.json()["doc_id"]: "first.pdf",
+        second_upload.json()["doc_id"]: "second.pdf",
+    }
+
+
+def test_list_session_documents_returns_empty_for_empty_session(
+    sessions_client: TestClient,
+) -> None:
+    session_id = _create_session(sessions_client, AUTH_HEADERS)
+
+    response = sessions_client.get(
+        f"/sessions/{session_id}/documents", headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"documents": []}
+
+
 def test_successful_ask_appears_in_history(history_client: TestClient) -> None:
     headers = {"Authorization": f"Bearer {create_access_token('history@example.com')}"}
     session_id = _create_session(history_client, headers)

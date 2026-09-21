@@ -3,6 +3,8 @@ const TOKEN_KEY = "access_token";
 
 const uploadedDocuments = [];
 const conversationHistory = [];
+const sessions = [];
+let currentSessionId = null;
 let conversationHistoryLoaded = false;
 
 const authScreen = document.querySelector("#auth-screen");
@@ -28,6 +30,8 @@ const questionInput = document.querySelector("#question");
 const askButton = document.querySelector("#ask-button");
 const statusElement = document.querySelector("#status");
 const exchangeElement = document.querySelector("#exchange");
+const sessionListElement = document.querySelector("#session-list");
+const newChatButton = document.querySelector("#new-chat-button");
 
 function getToken() {
   return sessionStorage.getItem(TOKEN_KEY);
@@ -47,11 +51,22 @@ function setAuthMode(isRegistering) {
   registerError.hidden = true;
 }
 
-function showMainApp() {
+async function showMainApp() {
   authScreen.hidden = true;
   shell.hidden = false;
-  conversationHistoryLoaded = false;
-  loadConversationHistory();
+  try {
+    await loadSessions();
+    if (sessions.length === 0) {
+      sessions.push(await createSession());
+    }
+    currentSessionId = sessions[0].session_id;
+    renderSessionList();
+    resetConversationView();
+    await loadConversationHistory();
+    await loadSessionDocuments();
+  } catch (error) {
+    showError(error.message || "Could not load your chats.");
+  }
 }
 
 function showAuthScreen() {
@@ -60,17 +75,23 @@ function showAuthScreen() {
   setAuthMode(false);
 }
 
-function resetWorkspace() {
+function resetConversationView() {
   uploadedDocuments.length = 0;
   conversationHistory.length = 0;
   conversationHistoryLoaded = false;
-  documentList.replaceChildren();
-  uploadedDocumentsElement.hidden = true;
+  renderUploadedDocuments();
   uploadConfirmation.hidden = true;
   exchangeElement.innerHTML = `<div class="empty-state"><span class="empty-icon" aria-hidden="true">?</span><h2>What would you like to know?</h2><p>Upload a PDF, then ask a question to start a conversation.</p></div>`;
   questionInput.value = "";
   questionInput.disabled = true;
   askButton.disabled = true;
+}
+
+function resetWorkspace() {
+  resetConversationView();
+  sessions.length = 0;
+  currentSessionId = null;
+  sessionListElement.replaceChildren();
   fileInput.value = "";
   updateFileLabel();
   setStatus("");
@@ -180,6 +201,45 @@ async function readApiError(response, fallback) {
   }
 }
 
+async function loadSessions() {
+  const response = await authenticatedFetch("/sessions");
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Could not load chat sessions."));
+  }
+  const data = await response.json();
+  sessions.length = 0;
+  sessions.push(...data.sessions);
+}
+
+async function createSession() {
+  const response = await authenticatedFetch("/sessions", { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Could not start a new chat."));
+  }
+  return response.json();
+}
+
+function sessionLabel(session) {
+  return session.title || `Chat from ${new Date(session.created_at).toLocaleString()}`;
+}
+
+function renderSessionList() {
+  sessionListElement.replaceChildren();
+  for (const session of sessions) {
+    const item = document.createElement("li");
+    item.className = session.session_id === currentSessionId ? "active" : "";
+    item.textContent = sessionLabel(session);
+    item.addEventListener("click", () => selectSession(session.session_id));
+    sessionListElement.append(item);
+  }
+}
+
+function updateAskAvailability() {
+  const canAsk = conversationHistoryLoaded && uploadedDocuments.length > 0;
+  questionInput.disabled = !canAsk;
+  askButton.disabled = !canAsk;
+}
+
 function renderUploadedDocuments() {
   documentList.replaceChildren();
   for (const uploadedDocument of uploadedDocuments) {
@@ -196,8 +256,7 @@ function onUploadSuccess(fileName, response) {
   uploadConfirmation.textContent = `✓ ${fileName} uploaded — ready for questions`;
   uploadConfirmation.hidden = false;
   renderUploadedDocuments();
-  questionInput.disabled = !conversationHistoryLoaded;
-  askButton.disabled = !conversationHistoryLoaded;
+  updateAskAvailability();
   setStatus("");
 }
 
@@ -205,6 +264,10 @@ async function uploadDocument() {
   const file = fileInput.files[0];
   if (!file) {
     showError("Choose a PDF before uploading.");
+    return;
+  }
+  if (!currentSessionId) {
+    showError("Select or start a chat first.");
     return;
   }
   if (!isPdf(file)) {
@@ -218,6 +281,7 @@ async function uploadDocument() {
 
   const formData = new FormData();
   formData.append("file", file);
+  formData.append("session_id", currentSessionId);
   uploadButton.disabled = true;
   setStatus("Uploading and indexing your document...");
   try {
@@ -274,7 +338,7 @@ function renderExchange(question, answer, sources) {
 
 async function loadConversationHistory() {
   try {
-    const response = await authenticatedFetch("/history");
+    const response = await authenticatedFetch(`/history?session_id=${encodeURIComponent(currentSessionId)}`);
     if (!response.ok) {
       throw new Error(await readApiError(response, "Conversation history could not be loaded."));
     }
@@ -286,15 +350,60 @@ async function loadConversationHistory() {
     showError(error.message || "Conversation history could not be loaded.");
   } finally {
     conversationHistoryLoaded = true;
-    if (uploadedDocuments.length > 0) {
-      questionInput.disabled = false;
-      askButton.disabled = false;
+    updateAskAvailability();
+  }
+}
+
+async function loadSessionDocuments() {
+  try {
+    const response = await authenticatedFetch(
+      `/sessions/${encodeURIComponent(currentSessionId)}/documents`
+    );
+    if (!response.ok) {
+      throw new Error(
+        await readApiError(response, "Could not load this session's documents.")
+      );
     }
+    const data = await response.json();
+    uploadedDocuments.length = 0;
+    uploadedDocuments.push(
+      ...data.documents.map((doc) => ({ docId: doc.doc_id, fileName: doc.filename }))
+    );
+    renderUploadedDocuments();
+  } catch (error) {
+    showError(error.message || "Could not load this session's documents.");
+  } finally {
+    updateAskAvailability();
+  }
+}
+
+async function selectSession(sessionId) {
+  currentSessionId = sessionId;
+  renderSessionList();
+  resetConversationView();
+  await loadConversationHistory();
+  await loadSessionDocuments();
+}
+
+async function startNewChat() {
+  newChatButton.disabled = true;
+  try {
+    const session = await createSession();
+    sessions.unshift(session);
+    await selectSession(session.session_id);
+  } catch (error) {
+    showError(error.message || "Could not start a new chat.");
+  } finally {
+    newChatButton.disabled = false;
   }
 }
 
 async function askQuestion() {
   const question = questionInput.value.trim();
+  if (!currentSessionId) {
+    showError("Select or start a chat first.");
+    return;
+  }
   if (uploadedDocuments.length === 0) {
     showError("Upload a document before asking a question.");
     return;
@@ -314,7 +423,7 @@ async function askQuestion() {
     const response = await authenticatedFetch("/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, history: historyPayload }),
+      body: JSON.stringify({ question, history: historyPayload, session_id: currentSessionId }),
     });
     if (!response.ok) {
       throw new Error(await readApiError(response, "The question could not be answered."));
@@ -362,7 +471,7 @@ async function submitAuthForm(form, errorElement, isRegistering) {
     const data = await response.json();
     sessionStorage.setItem(TOKEN_KEY, data.access_token);
     form.reset();
-    showMainApp();
+    await showMainApp();
   } catch (error) {
     errorElement.textContent = error.message || "Authentication failed. Please try again.";
     errorElement.hidden = false;
@@ -394,15 +503,16 @@ askForm.addEventListener("submit", (event) => {
   askQuestion();
 });
 authToggle.addEventListener("click", () => setAuthMode(registerForm.hidden));
-loginForm.addEventListener("submit", (event) => {
+loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  submitAuthForm(loginForm, loginError, false);
+  await submitAuthForm(loginForm, loginError, false);
 });
 registerForm.addEventListener("submit", (event) => {
   event.preventDefault();
   submitAuthForm(registerForm, registerError, true);
 });
 logoutButton.addEventListener("click", logout);
+newChatButton.addEventListener("click", startNewChat);
 
 if (getToken()) {
   showMainApp();

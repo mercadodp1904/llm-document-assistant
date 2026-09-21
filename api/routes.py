@@ -59,6 +59,15 @@ class SessionsResponse(BaseModel):
     sessions: list[SessionResponse]
 
 
+class SessionDocumentResponse(BaseModel):
+    doc_id: str
+    filename: str
+
+
+class SessionDocumentsResponse(BaseModel):
+    documents: list[SessionDocumentResponse]
+
+
 class HistoryTurn(BaseModel):
     question: str
     answer: str
@@ -140,6 +149,23 @@ async def list_sessions(
                 created_at=session["created_at"],
             )
             for session in get_chat_sessions(current_user)
+        ]
+    )
+
+
+@router.get(
+    "/sessions/{session_id}/documents",
+    response_model=SessionDocumentsResponse,
+)
+async def list_session_documents(
+    session_id: str,
+    current_user: str = Depends(get_current_user),
+) -> SessionDocumentsResponse:
+    _require_owned_session(session_id, current_user)
+    return SessionDocumentsResponse(
+        documents=[
+            SessionDocumentResponse(doc_id=row["doc_id"], filename=row["filename"])
+            for row in get_session_documents(session_id)
         ]
     )
 

@@ -15,14 +15,36 @@ practical LLM/RAG, backend, and cloud skills for job applications
   LLM provider.
 - Vector storage: start simple (in-memory or SQLite + numpy / FAISS) — do not
   reach for a hosted vector DB unless asked.
-- Auth: JWT-based, using a standard library (e.g. python-jose or PyJWT).
+- Auth: JWT-based, using python-jose (already implemented in `api/auth.py`).
 - Frontend: plain HTML/CSS/JS, no build step, no framework (no React/Vue/
   npm toolchain unless explicitly asked). Served as static files directly
-  from FastAPI via `StaticFiles`. Lives in a top-level `static/` folder
-  (`static/index.html`, `static/app.js`, `static/style.css`). Talks to the
-  API via `fetch()` — no server-rendered templates (Jinja2) unless asked.
+  from FastAPI. Talks to the API via `fetch()` — no server-rendered
+  templates (Jinja2) unless asked.
 - Testing: pytest.
-- Deployment target: AWS (Lambda or a small EC2/Fargate service).
+- Deployment target: AWS (Lambda or a small EC2/Fargate service) — decided
+  at deploy time; SQLite needs persistent disk, which not all deployment
+  targets provide, so the final choice depends on the target.
+
+## Running tests and the server
+This project uses a Python virtual environment at `venv/`. The global
+Python install on this machine has an unpinned `bcrypt` version that is
+incompatible with `passlib`'s bcrypt backend — running Python or pytest
+through the global interpreter instead of the venv causes spurious auth
+test failures (`module 'bcrypt' has no attribute '__about__'`) that are
+unrelated to any actual code change.
+
+**Always use these exact commands, never the bare equivalents:**
+- Run tests: `.\venv\Scripts\python.exe -m pytest`
+  (NOT `pytest`, NOT `python -m pytest`)
+- Run the server: `.\venv\Scripts\python.exe -m uvicorn api.main:app --reload`
+  (NOT bare `uvicorn api.main:app --reload`)
+- Install/update dependencies: `.\venv\Scripts\python.exe -m pip install ...`
+
+If a task requires activating the venv in a persistent shell instead, use
+`.\venv\Scripts\Activate.ps1` (preceded by `Set-ExecutionPolicy -Scope
+Process -ExecutionPolicy RemoteSigned` if execution policy blocks it) and
+confirm the prompt shows `(venv)` before running anything. When reporting
+test results, always state which command was used to run them.
 
 ## Coding conventions
 - Prefer explicit, readable code over clever one-liners — this project is
@@ -31,7 +53,17 @@ practical LLM/RAG, backend, and cloud skills for job applications
 - Type hints on all function signatures.
 - Keep functions small and single-purpose; one concern per module
   (e.g. `chunking.py`, `embeddings.py`, `retriever.py`, `llm_client.py`,
-  `auth.py`, `api/routes.py`).
+  `api/auth.py`, `api/routes.py`).
+- SQLite access is raw `sqlite3`, no ORM. When adding a new table, follow
+  the existing pattern in `api/auth.py`: an `init_<table>_table(connection
+  = None)` function that accepts an optional connection (reusing one
+  already open inside `init_db()`) or opens its own via `_get_connection()`
+  if called standalone.
+- Data that belongs to a specific user or chat session must be scoped and
+  filtered in the SQL query itself (`WHERE user_email = ?` /
+  `WHERE session_id = ?`), never trusted from client input alone. Ownership
+  checks (404 if not found, 403 if not owned) happen once at the route
+  level before touching session data.
 - Frontend JS should be plain, readable vanilla JS — no jQuery, no bundler
   syntax (no `import`/`export` unless served as native ES modules). Keep
   `app.js` organized into clearly named functions (e.g. `uploadDocument()`,
@@ -44,7 +76,9 @@ practical LLM/RAG, backend, and cloud skills for job applications
   via `python-dotenv` locally, and from the platform's secrets manager in
   deployment.
 - Every new feature should come with at least one pytest test. Don't ask
-  whether to add tests — add them.
+  whether to add tests — add them. When an existing function's signature
+  changes, update every call site and every test that calls it directly —
+  don't leave stale callers that happen to still pass.
 - Prefer standard library / small well-known packages over heavy frameworks.
 
 ## What Copilot should NOT do
@@ -57,6 +91,8 @@ practical LLM/RAG, backend, and cloud skills for job applications
 - Don't introduce a frontend build step, npm/node toolchain, or JS
   framework (React, Vue, etc.) unless explicitly asked. The frontend is
   intentionally plain static HTML/CSS/JS served by FastAPI.
+- Don't run tests or the server with a bare `python`/`pytest`/`uvicorn`
+  command — always the venv-qualified form above.
 
 ## Context for explanations
 When explaining code changes in chat, keep explanations short and geared

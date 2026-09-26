@@ -131,10 +131,18 @@ def init_session_documents_table(
                 filename TEXT NOT NULL,
                 chunks TEXT NOT NULL,
                 vectors TEXT NOT NULL,
+                raw_text TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
+        columns = connection.execute(
+            "PRAGMA table_info(session_documents)"
+        ).fetchall()
+        if not any(column[1] == "raw_text" for column in columns):
+            connection.execute(
+                "ALTER TABLE session_documents ADD COLUMN raw_text TEXT NOT NULL DEFAULT ''"
+            )
         return
 
     with _get_connection() as owned_connection:
@@ -191,15 +199,25 @@ def save_session_document(
     filename: str,
     chunks: list[str],
     vectors: list[list[float]],
+    raw_text: str,
 ) -> str:
     doc_id = uuid4().hex
     with _get_connection() as connection:
         connection.execute(
             """
-            INSERT INTO session_documents (doc_id, session_id, filename, chunks, vectors)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO session_documents (
+                doc_id, session_id, filename, chunks, vectors, raw_text
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (doc_id, session_id, filename, json.dumps(chunks), json.dumps(vectors)),
+            (
+                doc_id,
+                session_id,
+                filename,
+                json.dumps(chunks),
+                json.dumps(vectors),
+                raw_text,
+            ),
         )
     return doc_id
 
@@ -208,7 +226,7 @@ def get_session_documents(session_id: str) -> list[sqlite3.Row]:
     with _get_connection() as connection:
         rows = connection.execute(
             """
-            SELECT doc_id, filename, chunks, vectors
+            SELECT doc_id, filename, chunks, vectors, raw_text
             FROM session_documents
             WHERE session_id = ?
             ORDER BY created_at ASC, doc_id ASC

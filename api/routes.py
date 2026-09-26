@@ -10,7 +10,8 @@ from pypdf import PdfReader
 
 from chunking import split_text
 from embeddings import generate_embeddings
-from llm_client import DEFAULT_MODEL, answer_question
+from llm_client import DEFAULT_MODEL, STUFF_THRESHOLD_TOKENS, answer_question
+from llm_client import count_tokens
 from retriever import InMemoryRetriever
 from api.auth import create_access_token, create_user, get_chat_session
 from api.auth import get_current_user, get_user_by_email
@@ -199,6 +200,7 @@ async def upload_document(
         file.filename or "uploaded.pdf",
         chunks,
         vectors,
+        text,
     )
     logger.info("Chunking done and embeddings generated for document %s", doc_id)
     return UploadResponse(doc_id=doc_id, chunk_count=len(chunks))
@@ -216,25 +218,41 @@ async def ask_question(
         raise HTTPException(status_code=404, detail="Document not found")
 
     try:
-        query_vectors = generate_embeddings([request.question])
-        if not query_vectors:
-            raise ValueError("Could not generate a query embedding")
+        total_tokens = sum(
+            count_tokens(document["raw_text"], model=request.model)
+            for document in session_documents
+        )
+        if total_tokens < STUFF_THRESHOLD_TOKENS:
+            selected_chunks = [
+                (0.0, document["doc_id"], document["filename"], document["raw_text"])
+                for document in session_documents
+            ]
+            logger.info(
+                "Stuffed %d documents directly (%d tokens, under threshold)",
+                len(session_documents),
+                total_tokens,
+            )
+        else:
+            query_vectors = generate_embeddings([request.question])
+            if not query_vectors:
+                raise ValueError("Could not generate a query embedding")
 
-        ranked_chunks: list[tuple[float, str, str, str]] = []
-        for document in session_documents:
-            chunks = json.loads(document["chunks"])
-            vectors = json.loads(document["vectors"])
-            retriever = InMemoryRetriever(chunks, vectors, generate_embeddings)
-            for score, chunk in retriever.search_with_embedding(
-                query_vectors[0], request.top_k
-            ):
-                ranked_chunks.append(
-                    (score, document["doc_id"], document["filename"], chunk)
-                )
+            ranked_chunks: list[tuple[float, str, str, str]] = []
+            for document in session_documents:
+                chunks = json.loads(document["chunks"])
+                vectors = json.loads(document["vectors"])
+                retriever = InMemoryRetriever(chunks, vectors, generate_embeddings)
+                for score, chunk in retriever.search_with_embedding(
+                    query_vectors[0], request.top_k
+                ):
+                    ranked_chunks.append(
+                        (score, document["doc_id"], document["filename"], chunk)
+                    )
 
-        ranked_chunks.sort(key=lambda item: item[0], reverse=True)
-        context_limit = max(request.top_k, len(session_documents) * request.top_k)
-        selected_chunks = ranked_chunks[:context_limit]
+            ranked_chunks.sort(key=lambda item: item[0], reverse=True)
+            context_limit = max(request.top_k, len(session_documents) * request.top_k)
+            selected_chunks = ranked_chunks[:context_limit]
+
         context = [
             f"[{filename}]\n{chunk}"
             for _, _, filename, chunk in selected_chunks

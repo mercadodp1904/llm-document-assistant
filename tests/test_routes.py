@@ -10,6 +10,7 @@ from pypdf import PdfWriter
 from api import auth
 from api.main import app
 from api.auth import create_access_token
+from llm_client import STUFF_THRESHOLD_TOKENS
 
 
 client = TestClient(app)
@@ -32,6 +33,11 @@ def sessions_client(
     monkeypatch.setattr(auth, "DATABASE_PATH", tmp_path / "sessions.db")
     auth.init_db()
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def mock_token_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("api.routes.count_tokens", lambda *args, **kwargs: 1)
 
 
 def _pdf_bytes(text: str) -> bytes:
@@ -321,17 +327,18 @@ def test_ask_ranks_chunks_across_all_documents(history_client: TestClient) -> No
     session_id = _create_session(history_client, AUTH_HEADERS)
     with patch("api.routes.PdfReader", side_effect=[FakeReader("first context"), FakeReader("second context")]):
         with patch("api.routes.answer_question", return_value="combined answer") as answer:
-            with patch(
-                "api.routes.generate_embeddings",
-                side_effect=[[[0.6, 0.8]], [[1.0, 0.0]], [[1.0, 0.0]]],
-            ):
-                _upload_document(history_client, AUTH_HEADERS, session_id, "first.pdf")
-                _upload_document(history_client, AUTH_HEADERS, session_id, "second.pdf")
-                response = history_client.post(
-                    "/ask",
-                    json={"session_id": session_id, "question": "What?", "top_k": 2},
-                    headers=AUTH_HEADERS,
-                )
+            with patch("api.routes.count_tokens", return_value=STUFF_THRESHOLD_TOKENS):
+                with patch(
+                    "api.routes.generate_embeddings",
+                    side_effect=[[[0.6, 0.8]], [[1.0, 0.0]], [[1.0, 0.0]]],
+                ):
+                    _upload_document(history_client, AUTH_HEADERS, session_id, "first.pdf")
+                    _upload_document(history_client, AUTH_HEADERS, session_id, "second.pdf")
+                    response = history_client.post(
+                        "/ask",
+                        json={"session_id": session_id, "question": "What?", "top_k": 2},
+                        headers=AUTH_HEADERS,
+                    )
 
     assert response.status_code == 200
     assert [source["filename"] for source in response.json()["sources"]] == [
@@ -342,6 +349,70 @@ def test_ask_ranks_chunks_across_all_documents(history_client: TestClient) -> No
         "[second.pdf]\nsecond context",
         "[first.pdf]\nfirst context",
     ]
+
+
+def test_ask_stuffs_small_documents_without_retrieval(
+    history_client: TestClient,
+) -> None:
+    session_id = _create_session(history_client, AUTH_HEADERS)
+    auth.save_session_document(
+        session_id,
+        "report.pdf",
+        ["chunk"],
+        [[1.0]],
+        "The complete report text.",
+    )
+
+    with patch("api.routes.count_tokens", return_value=10):
+        with patch("api.routes.generate_embeddings") as embeddings:
+            with patch("api.routes.InMemoryRetriever") as retriever:
+                with patch("api.routes.answer_question", return_value="answer"):
+                    response = history_client.post(
+                        "/ask",
+                        json={"session_id": session_id, "question": "What?"},
+                        headers=AUTH_HEADERS,
+                    )
+
+    assert response.status_code == 200
+    source = response.json()["sources"][0]
+    assert source["filename"] == "report.pdf"
+    assert source["text"] == "The complete report text."
+    embeddings.assert_not_called()
+    retriever.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "token_count", [STUFF_THRESHOLD_TOKENS, STUFF_THRESHOLD_TOKENS + 1]
+)
+def test_ask_uses_retrieval_at_or_above_threshold(
+    history_client: TestClient, token_count: int
+) -> None:
+    session_id = _create_session(history_client, AUTH_HEADERS)
+    auth.save_session_document(
+        session_id,
+        "report.pdf",
+        ["retrieved chunk"],
+        [[1.0]],
+        "The complete report text.",
+    )
+
+    with patch("api.routes.count_tokens", return_value=token_count):
+        with patch("api.routes.generate_embeddings", return_value=[[1.0]]) as embeddings:
+            with patch("api.routes.InMemoryRetriever") as retriever:
+                retriever.return_value.search_with_embedding.return_value = [
+                    (1.0, "retrieved chunk")
+                ]
+                with patch("api.routes.answer_question", return_value="answer"):
+                    response = history_client.post(
+                        "/ask",
+                        json={"session_id": session_id, "question": "What?"},
+                        headers=AUTH_HEADERS,
+                    )
+
+    assert response.status_code == 200
+    embeddings.assert_called_once_with(["What?"])
+    retriever.assert_called_once()
+    assert response.json()["sources"][0]["text"] == "retrieved chunk"
 
 
 def test_ask_passes_only_the_last_five_history_turns(

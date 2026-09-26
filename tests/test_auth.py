@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 
 import pytest
 from fastapi.testclient import TestClient
@@ -82,3 +83,67 @@ def test_protected_route_requires_valid_token(auth_client: TestClient) -> None:
     assert without_token.status_code == 401
     assert with_invalid_token.status_code == 401
     assert with_valid_token.status_code == 404
+
+
+def test_session_documents_migrate_raw_text_without_losing_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_path = tmp_path / "legacy.db"
+    monkeypatch.setattr(auth, "DATABASE_PATH", database_path)
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        """
+        CREATE TABLE session_documents (
+            doc_id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            chunks TEXT NOT NULL,
+            vectors TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO session_documents (doc_id, session_id, filename, chunks, vectors)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        ("legacy-doc", "session", "legacy.pdf", "[]", "[]"),
+    )
+    connection.commit()
+    connection.close()
+
+    auth.init_db()
+
+    with sqlite3.connect(database_path) as migrated_connection:
+        columns = {
+            row[1]
+            for row in migrated_connection.execute(
+                "PRAGMA table_info(session_documents)"
+            )
+        }
+        row = migrated_connection.execute(
+            "SELECT doc_id, raw_text FROM session_documents"
+        ).fetchone()
+
+    assert "raw_text" in columns
+    assert row == ("legacy-doc", "")
+
+
+def test_session_document_raw_text_round_trip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(auth, "DATABASE_PATH", tmp_path / "round-trip.db")
+    auth.init_db()
+
+    auth.save_session_document(
+        "session",
+        "report.pdf",
+        ["chunk"],
+        [[1.0]],
+        "The original extracted document text.",
+    )
+
+    document = auth.get_session_documents("session")[0]
+
+    assert document["raw_text"] == "The original extracted document text."

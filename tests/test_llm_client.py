@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from llm_client import answer_question
+from llm_client import answer_question, count_tokens
 
 
 def test_answer_question_passes_context_and_model_to_gemini() -> None:
@@ -46,3 +46,16 @@ def test_answer_question_requires_api_key() -> None:
             assert "GOOGLE_API_KEY" in str(exc)
         else:
             raise AssertionError("Expected a missing API key error")
+
+
+def test_count_tokens_uses_requested_model() -> None:
+    with patch.dict("os.environ", {"GOOGLE_API_KEY": "test-key"}):
+        with patch("llm_client.genai") as genai:
+            client_class = genai.Client
+            client_class.return_value.models.count_tokens.return_value.total_tokens = 42
+
+            result = count_tokens("some text", model="test-model")
+
+    assert result == 42
+    call = client_class.return_value.models.count_tokens.call_args
+    assert call.kwargs == {"model": "test-model", "contents": "some text"}

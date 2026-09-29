@@ -244,20 +244,56 @@ function renderUploadedDocuments() {
   documentList.replaceChildren();
   for (const uploadedDocument of uploadedDocuments) {
     const item = document.createElement("li");
-    item.textContent = uploadedDocument.fileName;
+    item.className = "document-item";
+
+    const fileName = document.createElement("span");
+    fileName.className = "document-name";
+    fileName.textContent = uploadedDocument.fileName;
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "document-delete-button";
+    deleteButton.textContent = "Delete";
+    deleteButton.setAttribute("aria-label", `Delete ${uploadedDocument.fileName}`);
+    deleteButton.addEventListener("click", () => deleteDocument(uploadedDocument.docId, uploadedDocument.fileName));
+
+    item.append(fileName, deleteButton);
     documentList.append(item);
   }
   uploadedDocumentsElement.hidden = uploadedDocuments.length === 0;
 }
 
-function onUploadSuccess(fileName, response) {
-  uploadedDocuments.push({ docId: response.doc_id, fileName });
-  fileLabel.textContent = fileName;
-  uploadConfirmation.textContent = `✓ ${fileName} uploaded — ready for questions`;
+async function onUploadSuccess(fileName, response) {
+  await loadSessionDocuments();
+  fileInput.value = "";
+  updateFileLabel();
+  const replaced = Boolean(response.replaced);
+  uploadConfirmation.textContent = replaced
+    ? `${fileName} was already in this chat, so the old version was replaced.`
+    : `✓ ${fileName} uploaded — ready for questions`;
   uploadConfirmation.hidden = false;
-  renderUploadedDocuments();
   updateAskAvailability();
   setStatus("");
+}
+
+async function deleteDocument(docId, fileName) {
+  if (!confirm(`Delete "${fileName}" from this chat?`)) {
+    return;
+  }
+
+  try {
+    const response = await authenticatedFetch(
+      `/sessions/${encodeURIComponent(currentSessionId)}/documents/${encodeURIComponent(docId)}`,
+      { method: "DELETE" }
+    );
+    if (!response.ok) {
+      throw new Error(await readApiError(response, "Could not delete that document."));
+    }
+    await loadSessionDocuments();
+    setStatus("");
+  } catch (error) {
+    showError(error.message || "Could not delete that document.");
+  }
 }
 
 async function uploadDocument() {
@@ -289,7 +325,7 @@ async function uploadDocument() {
     if (!response.ok) {
       throw new Error(await readApiError(response, "Upload failed. Try another PDF."));
     }
-    onUploadSuccess(file.name, await response.json());
+    await onUploadSuccess(file.name, await response.json());
   } catch (error) {
     showError(error.message || "Upload failed. Please try again.");
   } finally {

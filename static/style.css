@@ -344,21 +344,45 @@ input[type="file"] {
   padding: 0;
 }
 
-.uploaded-documents li {
-  align-items: center;
-  display: flex;
-  font: 0.8rem/1.4 Arial, sans-serif;
+.document-list {
+  display: grid;
   gap: 8px;
-  overflow-wrap: anywhere;
-  padding: 6px 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
-.uploaded-documents li::before {
-  background: var(--accent);
-  content: "";
-  display: block;
-  flex: 0 0 6px;
-  height: 6px;
+.document-item {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 8px 10px;
+}
+
+.document-name {
+  color: var(--ink);
+  font: 0.8rem/1.4 Arial, sans-serif;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-delete-button {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--accent-dark);
+  cursor: pointer;
+  font: 700 0.66rem Arial, sans-serif;
+  padding: 5px 9px;
+}
+
+.document-delete-button:hover:not(:disabled) {
+  background: var(--soft-accent);
 }
 
 .sidebar-note {

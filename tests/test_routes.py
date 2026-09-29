@@ -491,11 +491,134 @@ def test_ask_returns_not_found_for_unknown_document(sessions_client: TestClient)
     assert response.status_code == 404
 
 
+def test_upload_replaces_existing_document_with_same_filename_in_same_session(
+    sessions_client: TestClient,
+) -> None:
+    session_id = _create_session(sessions_client, AUTH_HEADERS)
+    with patch("api.routes.PdfReader", side_effect=[FakeReader("first"), FakeReader("second")]):
+        with patch("api.routes.generate_embeddings", return_value=[[1.0]]):
+            first_upload = _upload_document(
+                sessions_client, AUTH_HEADERS, session_id, "report.pdf"
+            )
+            second_upload = _upload_document(
+                sessions_client, AUTH_HEADERS, session_id, "report.pdf"
+            )
+
+    rows = auth.get_session_documents(session_id)
+
+    assert first_upload.status_code == 200
+    assert first_upload.json()["replaced"] is False
+    assert second_upload.status_code == 200
+    assert second_upload.json()["replaced"] is True
+    assert len(rows) == 1
+    assert rows[0]["filename"] == "report.pdf"
+    assert rows[0]["raw_text"] == "second"
+
+
+def test_upload_keeps_same_filename_across_different_sessions(
+    sessions_client: TestClient,
+) -> None:
+    first_session_id = _create_session(sessions_client, AUTH_HEADERS)
+    second_session_id = _create_session(sessions_client, AUTH_HEADERS)
+    with patch("api.routes.PdfReader", side_effect=[FakeReader("first"), FakeReader("second")]):
+        with patch("api.routes.generate_embeddings", return_value=[[1.0]]):
+            first_upload = _upload_document(
+                sessions_client, AUTH_HEADERS, first_session_id, "shared.pdf"
+            )
+            second_upload = _upload_document(
+                sessions_client, AUTH_HEADERS, second_session_id, "shared.pdf"
+            )
+
+    assert first_upload.status_code == 200
+    assert first_upload.json()["replaced"] is False
+    assert second_upload.status_code == 200
+    assert second_upload.json()["replaced"] is False
+    assert len(auth.get_session_documents(first_session_id)) == 1
+    assert len(auth.get_session_documents(second_session_id)) == 1
+
+
 def test_upload_rejects_unknown_session(sessions_client: TestClient) -> None:
     response = _upload_document(sessions_client, AUTH_HEADERS, "missing")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Session not found"
+
+
+def test_delete_document_removes_document_and_returns_204(
+    sessions_client: TestClient,
+) -> None:
+    session_id = _create_session(sessions_client, AUTH_HEADERS)
+    with patch("api.routes.PdfReader", return_value=FakeReader("document text")):
+        with patch("api.routes.generate_embeddings", return_value=[[1.0]]):
+            upload_response = _upload_document(
+                sessions_client, AUTH_HEADERS, session_id, "report.pdf"
+            )
+
+    doc_id = upload_response.json()["doc_id"]
+    response = sessions_client.delete(
+        f"/sessions/{session_id}/documents/{doc_id}", headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 204
+    assert auth.get_session_documents(session_id) == []
+
+
+def test_delete_document_returns_not_found_for_unknown_document(
+    sessions_client: TestClient,
+) -> None:
+    session_id = _create_session(sessions_client, AUTH_HEADERS)
+
+    response = sessions_client.delete(
+        f"/sessions/{session_id}/documents/unknown-doc", headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 404
+
+
+def test_delete_document_rejects_foreign_session(
+    sessions_client: TestClient,
+) -> None:
+    owner_headers = {
+        "Authorization": f"Bearer {create_access_token('owner@example.com')}"
+    }
+    session_id = _create_session(sessions_client, owner_headers)
+    with patch("api.routes.PdfReader", return_value=FakeReader("secret text")):
+        with patch("api.routes.generate_embeddings", return_value=[[1.0]]):
+            upload_response = _upload_document(
+                sessions_client, owner_headers, session_id, "owner.pdf"
+            )
+
+    response = sessions_client.delete(
+        f"/sessions/{session_id}/documents/{upload_response.json()['doc_id']}",
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 403
+
+
+def test_ask_returns_not_found_after_document_delete(
+    sessions_client: TestClient,
+) -> None:
+    session_id = _create_session(sessions_client, AUTH_HEADERS)
+    with patch("api.routes.PdfReader", return_value=FakeReader("document text")):
+        with patch("api.routes.generate_embeddings", return_value=[[1.0]]):
+            upload_response = _upload_document(
+                sessions_client, AUTH_HEADERS, session_id, "report.pdf"
+            )
+
+    doc_id = upload_response.json()["doc_id"]
+    delete_response = sessions_client.delete(
+        f"/sessions/{session_id}/documents/{doc_id}", headers=AUTH_HEADERS
+    )
+    ask_response = sessions_client.post(
+        "/ask",
+        json={"session_id": session_id, "question": "What?"},
+        headers=AUTH_HEADERS,
+    )
+
+    assert delete_response.status_code == 204
+    assert ask_response.status_code == 404
+    assert ask_response.json()["detail"] == "Document not found"
 
 
 def test_upload_rejects_session_owned_by_another_user(

@@ -16,8 +16,8 @@ from retriever import InMemoryRetriever
 from api.auth import create_access_token, create_user, get_chat_session
 from api.auth import get_current_user, get_user_by_email
 from api.auth import create_chat_session, get_chat_sessions, get_conversation_history
-from api.auth import get_session_documents, init_db, save_conversation_turn
-from api.auth import save_session_document
+from api.auth import delete_session_document, get_session_documents, init_db
+from api.auth import replace_session_document, save_conversation_turn
 from api.auth import verify_password
 
 
@@ -29,6 +29,7 @@ init_db()
 class UploadResponse(BaseModel):
     doc_id: str
     chunk_count: int
+    replaced: bool
 
 
 class AuthRequest(BaseModel):
@@ -195,7 +196,7 @@ async def upload_document(
         logger.exception("Document upload pipeline failed")
         raise HTTPException(status_code=400, detail="Could not process the PDF") from exc
 
-    doc_id = save_session_document(
+    doc_id, replaced = replace_session_document(
         session_id,
         file.filename or "uploaded.pdf",
         chunks,
@@ -203,7 +204,19 @@ async def upload_document(
         text,
     )
     logger.info("Chunking done and embeddings generated for document %s", doc_id)
-    return UploadResponse(doc_id=doc_id, chunk_count=len(chunks))
+    return UploadResponse(doc_id=doc_id, chunk_count=len(chunks), replaced=replaced)
+
+
+@router.delete("/sessions/{session_id}/documents/{document_id}", status_code=204)
+async def delete_document(
+    session_id: str,
+    document_id: str,
+    current_user: str = Depends(get_current_user),
+) -> None:
+    _require_owned_session(session_id, current_user)
+    if not delete_session_document(session_id, document_id):
+        raise HTTPException(status_code=404, detail="Document not found")
+    return None
 
 
 @router.post("/ask", response_model=AskResponse)

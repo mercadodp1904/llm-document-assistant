@@ -222,6 +222,52 @@ def save_session_document(
     return doc_id
 
 
+def replace_session_document(
+    session_id: str,
+    filename: str,
+    chunks: list[str],
+    vectors: list[list[float]],
+    raw_text: str,
+) -> tuple[str, bool]:
+    doc_id = uuid4().hex
+    with _get_connection() as connection:
+        existing_row = connection.execute(
+            """
+            SELECT doc_id
+            FROM session_documents
+            WHERE session_id = ? AND filename = ?
+            LIMIT 1
+            """,
+            (session_id, filename),
+        ).fetchone()
+        replaced = existing_row is not None
+        if replaced:
+            connection.execute(
+                """
+                DELETE FROM session_documents
+                WHERE session_id = ? AND filename = ?
+                """,
+                (session_id, filename),
+            )
+        connection.execute(
+            """
+            INSERT INTO session_documents (
+                doc_id, session_id, filename, chunks, vectors, raw_text
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                doc_id,
+                session_id,
+                filename,
+                json.dumps(chunks),
+                json.dumps(vectors),
+                raw_text,
+            ),
+        )
+    return doc_id, replaced
+
+
 def get_session_documents(session_id: str) -> list[sqlite3.Row]:
     with _get_connection() as connection:
         rows = connection.execute(
@@ -234,6 +280,18 @@ def get_session_documents(session_id: str) -> list[sqlite3.Row]:
             (session_id,),
         ).fetchall()
     return list(rows)
+
+
+def delete_session_document(session_id: str, document_id: str) -> bool:
+    with _get_connection() as connection:
+        cursor = connection.execute(
+            """
+            DELETE FROM session_documents
+            WHERE session_id = ? AND doc_id = ?
+            """,
+            (session_id, document_id),
+        )
+        return cursor.rowcount > 0
 
 
 def get_user_by_email(email: str) -> sqlite3.Row | None:

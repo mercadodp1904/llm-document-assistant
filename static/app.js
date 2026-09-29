@@ -6,6 +6,7 @@ const conversationHistory = [];
 const sessions = [];
 let currentSessionId = null;
 let conversationHistoryLoaded = false;
+let openActionMenu = null;
 
 const authScreen = document.querySelector("#auth-screen");
 const shell = document.querySelector(".shell");
@@ -234,6 +235,59 @@ function renderSessionList() {
   }
 }
 
+function closeActionMenu() {
+  if (!openActionMenu) {
+    return;
+  }
+  const { button, menu } = openActionMenu;
+  button.setAttribute("aria-expanded", "false");
+  menu.hidden = true;
+  openActionMenu = null;
+}
+
+function createActionMenu(items) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "action-menu-button";
+  button.setAttribute("aria-label", "Document actions");
+  button.setAttribute("aria-haspopup", "menu");
+  button.setAttribute("aria-expanded", "false");
+  button.textContent = "⋯";
+
+  const menu = document.createElement("div");
+  menu.className = "action-menu";
+  menu.hidden = true;
+  menu.setAttribute("role", "menu");
+
+  for (const item of items) {
+    const actionButton = document.createElement("button");
+    actionButton.type = "button";
+    actionButton.className = `action-menu-item${item.danger ? " danger" : ""}`;
+    actionButton.textContent = item.label;
+    actionButton.setAttribute("role", "menuitem");
+    actionButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      item.onClick();
+      closeActionMenu();
+    });
+    menu.append(actionButton);
+  }
+
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (openActionMenu && openActionMenu.button === button) {
+      closeActionMenu();
+      return;
+    }
+    closeActionMenu();
+    button.setAttribute("aria-expanded", "true");
+    menu.hidden = false;
+    openActionMenu = { button, menu };
+  });
+
+  return { button, menu };
+}
+
 function updateAskAvailability() {
   const canAsk = conversationHistoryLoaded && uploadedDocuments.length > 0;
   questionInput.disabled = !canAsk;
@@ -249,15 +303,20 @@ function renderUploadedDocuments() {
     const fileName = document.createElement("span");
     fileName.className = "document-name";
     fileName.textContent = uploadedDocument.fileName;
+    fileName.title = uploadedDocument.fileName;
 
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "document-delete-button";
-    deleteButton.textContent = "Delete";
-    deleteButton.setAttribute("aria-label", `Delete ${uploadedDocument.fileName}`);
-    deleteButton.addEventListener("click", () => deleteDocument(uploadedDocument.docId, uploadedDocument.fileName));
+    const actionWrapper = document.createElement("div");
+    actionWrapper.className = "document-action-wrapper";
+    const { button, menu } = createActionMenu([
+      {
+        label: "Delete",
+        danger: true,
+        onClick: () => deleteDocument(uploadedDocument.docId, uploadedDocument.fileName),
+      },
+    ]);
+    actionWrapper.append(button, menu);
 
-    item.append(fileName, deleteButton);
+    item.append(fileName, actionWrapper);
     documentList.append(item);
   }
   uploadedDocumentsElement.hidden = uploadedDocuments.length === 0;
@@ -313,6 +372,13 @@ async function uploadDocument() {
   if (file.size > MAX_FILE_SIZE) {
     showError("That file is larger than the 20 MB limit.");
     return;
+  }
+  const existingMatch = uploadedDocuments.some((doc) => doc.fileName === file.name);
+  if (existingMatch) {
+    const confirmed = confirm(`${file.name} is already in this chat. Replace it with the new upload?`);
+    if (!confirmed) {
+      return;
+    }
   }
 
   const formData = new FormData();
@@ -538,6 +604,21 @@ askForm.addEventListener("submit", (event) => {
   event.preventDefault();
   askQuestion();
 });
+document.addEventListener("click", (event) => {
+  if (!openActionMenu) {
+    return;
+  }
+  const { button, menu } = openActionMenu;
+  if (!button.contains(event.target) && !menu.contains(event.target)) {
+    closeActionMenu();
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && openActionMenu) {
+    closeActionMenu();
+  }
+});
+
 authToggle.addEventListener("click", () => setAuthMode(registerForm.hidden));
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();

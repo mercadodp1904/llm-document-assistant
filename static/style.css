@@ -1,14 +1,22 @@
 :root {
   --ink: #202a25;
-  --muted: #68736d;
-  --line: #d7ded8;
-  --paper: #f7f8f4;
+  --muted: #4f5b54;
+  --line: #7a857d;
+  --paper: #f6f4ef;
   --panel: #ffffff;
-  --accent: #d96742;
-  --accent-dark: #a9442a;
-  --soft-accent: #fff0e9;
-  --dark: #27352f;
-  --user-bubble: #e5eee5;
+  --sidebar: #f1f0eb;
+  --input: #fffdf9;
+  --accent: #8a3b25;
+  --accent-dark: #6e2d1c;
+  --soft-accent: #f4e4de;
+  --dark: #202a25;
+  --user-bubble: #e8e7e2;
+  --status-background: #eef0ec;
+  --status-border: #68736c;
+  --status-ink: #35423a;
+  --on-accent: #ffffff;
+  --shadow-auth: 0 18px 50px rgba(32, 42, 37, 0.08);
+  --shadow-menu: 0 8px 20px rgba(32, 42, 37, 0.08);
   --font-body: ui-serif, Georgia, "Times New Roman", serif;
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
@@ -31,7 +39,7 @@ body {
 body {
   margin: 0;
   color: var(--ink);
-  background: radial-gradient(circle at 100% 0%, #e7f0e4 0, transparent 30rem), var(--paper);
+  background: var(--paper);
   overflow: hidden;
 }
 
@@ -55,9 +63,9 @@ body {
 }
 
 .auth-panel {
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--panel);
   border: 1px solid var(--line);
-  box-shadow: 0 18px 50px rgba(39, 53, 47, 0.08);
+  box-shadow: var(--shadow-auth);
   max-width: 400px;
   padding: 36px;
   width: 100%;
@@ -92,7 +100,7 @@ body {
 }
 
 .auth-form input {
-  background: #fcfdfa;
+  background: var(--input);
   border: 1px solid var(--line);
   color: var(--ink);
   padding: 12px 13px;
@@ -127,7 +135,7 @@ body {
 
 .app-header {
   align-items: center;
-  background: rgba(255, 255, 255, 0.76);
+  background: var(--panel);
   border-bottom: 1px solid var(--line);
   display: flex;
   flex: 0 0 68px;
@@ -138,7 +146,7 @@ body {
 .brand-mark {
   align-items: center;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   display: flex;
   font-size: var(--text-md);
   font-weight: 700;
@@ -168,7 +176,7 @@ body {
 }
 
 .sidebar {
-  background: rgba(242, 246, 240, 0.78);
+  background: var(--sidebar);
   border-right: 1px solid var(--line);
   min-height: 0;
   min-width: 0;
@@ -208,7 +216,7 @@ body {
 
 .file-drop {
   align-items: center;
-  border: 1px dashed #aebbb2;
+  border: 1px dashed var(--line);
   cursor: pointer;
   display: flex;
   gap: 9px;
@@ -279,12 +287,13 @@ input[type="file"] {
 
 .button:disabled {
   cursor: not-allowed;
+  font-weight: 400;
   opacity: 0.45;
 }
 
 .button-primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .button-primary:hover:not(:disabled) {
@@ -292,15 +301,19 @@ input[type="file"] {
 }
 
 .button-dark {
-  background: var(--dark);
-  color: #fff;
+  background: var(--accent);
+  color: var(--on-accent);
   min-width: 76px;
 }
 
+.button-dark:hover:not(:disabled) {
+  background: var(--accent-dark);
+}
+
 .confirmation {
-  background: #edf7ee;
-  border-left: 3px solid #6ea27b;
-  color: #3e6f50;
+  background: var(--status-background);
+  border-left: 3px solid var(--status-border);
+  color: var(--status-ink);
   font-size: var(--text-sm);
   line-height: 1.4;
   margin: 14px 0 0;
@@ -360,6 +373,7 @@ input[type="file"] {
 
 .session-list li.active {
   background: var(--soft-accent);
+  font-weight: 700;
 }
 
 .session-list li.active::before {
@@ -391,7 +405,7 @@ input[type="file"] {
 
 .document-item {
   align-items: center;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
   display: flex;
@@ -442,10 +456,10 @@ input[type="file"] {
 }
 
 .action-menu {
-  background: #fff;
+  background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
-  box-shadow: 0 8px 20px rgba(32, 42, 37, 0.08);
+  box-shadow: var(--shadow-menu);
   min-width: 120px;
   position: absolute;
   right: 0;
@@ -477,7 +491,7 @@ input[type="file"] {
 }
 
 .action-menu-item.danger {
-  color: #a9442a;
+  color: var(--accent-dark);
 }
 
 .sidebar-note {
@@ -654,7 +668,7 @@ input[type="file"] {
 }
 
 .composer-area {
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--panel);
   border-top: 1px solid var(--line);
   padding: 14px clamp(24px, 7vw, 110px) 16px;
 }
@@ -670,7 +684,7 @@ input[type="file"] {
 }
 
 input[type="text"] {
-  background: #fcfdfa;
+  background: var(--input);
   border: 1px solid var(--line);
   color: var(--ink);
   font: 1rem Georgia, serif;
@@ -682,6 +696,11 @@ input[type="text"] {
 input[type="text"]:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+input::placeholder {
+  color: var(--muted);
+  opacity: 1;
 }
 
 .status {

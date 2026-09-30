@@ -118,6 +118,50 @@ def get_chat_sessions(user_email: str) -> list[sqlite3.Row]:
     return list(rows)
 
 
+def rename_chat_session(session_id: str, title: str) -> sqlite3.Row | None:
+    with _get_connection() as connection:
+        connection.execute(
+            """
+            UPDATE chat_sessions
+            SET title = ?
+            WHERE session_id = ?
+            """,
+            (title, session_id),
+        )
+        return connection.execute(
+            """
+            SELECT session_id, title, created_at
+            FROM chat_sessions
+            WHERE session_id = ?
+            """,
+            (session_id,),
+        ).fetchone()
+
+
+def delete_chat_session(session_id: str) -> bool:
+    with _get_connection() as connection:
+        session = connection.execute(
+            "SELECT session_id FROM chat_sessions WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        if session is None:
+            return False
+
+        connection.execute(
+            "DELETE FROM conversation_turns WHERE session_id = ?",
+            (session_id,),
+        )
+        connection.execute(
+            "DELETE FROM session_documents WHERE session_id = ?",
+            (session_id,),
+        )
+        connection.execute(
+            "DELETE FROM chat_sessions WHERE session_id = ?",
+            (session_id,),
+        )
+    return True
+
+
 def init_session_documents_table(
     connection: sqlite3.Connection | None = None,
 ) -> None:

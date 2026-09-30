@@ -229,8 +229,31 @@ function renderSessionList() {
   for (const session of sessions) {
     const item = document.createElement("li");
     item.className = session.session_id === currentSessionId ? "active" : "";
-    item.textContent = sessionLabel(session);
     item.addEventListener("click", () => selectSession(session.session_id));
+
+    const title = document.createElement("span");
+    title.className = "session-title";
+    title.textContent = sessionLabel(session);
+    title.title = title.textContent;
+
+    const actionWrapper = document.createElement("div");
+    actionWrapper.className = "session-action-wrapper";
+    const { button, menu } = createActionMenu(
+      [
+        {
+          label: "Rename",
+          onClick: () => renameSession(session),
+        },
+        {
+          label: "Delete",
+          danger: true,
+          onClick: () => deleteSession(session),
+        },
+      ],
+      "Session actions"
+    );
+    actionWrapper.append(button, menu);
+    item.append(title, actionWrapper);
     sessionListElement.append(item);
   }
 }
@@ -245,11 +268,11 @@ function closeActionMenu() {
   openActionMenu = null;
 }
 
-function createActionMenu(items) {
+function createActionMenu(items, label = "Actions") {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "action-menu-button";
-  button.setAttribute("aria-label", "Document actions");
+  button.setAttribute("aria-label", label);
   button.setAttribute("aria-haspopup", "menu");
   button.setAttribute("aria-expanded", "false");
   button.textContent = "⋯";
@@ -267,8 +290,8 @@ function createActionMenu(items) {
     actionButton.setAttribute("role", "menuitem");
     actionButton.addEventListener("click", (event) => {
       event.stopPropagation();
-      item.onClick();
       closeActionMenu();
+      item.onClick();
     });
     menu.append(actionButton);
   }
@@ -313,7 +336,7 @@ function renderUploadedDocuments() {
         danger: true,
         onClick: () => deleteDocument(uploadedDocument.docId, uploadedDocument.fileName),
       },
-    ]);
+    ], "Document actions");
     actionWrapper.append(button, menu);
 
     item.append(fileName, actionWrapper);
@@ -352,6 +375,75 @@ async function deleteDocument(docId, fileName) {
     setStatus("");
   } catch (error) {
     showError(error.message || "Could not delete that document.");
+  }
+}
+
+async function renameSession(session) {
+  const currentTitle = sessionLabel(session);
+  const enteredTitle = window.prompt("Rename this chat", currentTitle);
+  if (enteredTitle === null) {
+    return;
+  }
+  const title = enteredTitle.trim();
+  if (!title || title === currentTitle) {
+    return;
+  }
+
+  try {
+    const response = await authenticatedFetch(
+      `/sessions/${encodeURIComponent(session.session_id)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      }
+    );
+    if (!response.ok) {
+      throw new Error(await readApiError(response, "Could not rename this chat."));
+    }
+    const updatedSession = await response.json();
+    session.title = updatedSession.title;
+    renderSessionList();
+    setStatus("");
+  } catch (error) {
+    showError(error.message || "Could not rename this chat.");
+  }
+}
+
+async function deleteSession(session) {
+  if (
+    !confirm(
+      "Delete this chat? Its conversation and uploaded documents will be permanently deleted."
+    )
+  ) {
+    return;
+  }
+
+  const wasActive = session.session_id === currentSessionId;
+  try {
+    const response = await authenticatedFetch(
+      `/sessions/${encodeURIComponent(session.session_id)}`,
+      { method: "DELETE" }
+    );
+    if (!response.ok && response.status !== 404) {
+      throw new Error(await readApiError(response, "Could not delete this chat."));
+    }
+    await loadSessions();
+    if (!wasActive) {
+      renderSessionList();
+      setStatus("");
+      return;
+    }
+
+    resetConversationView();
+    currentSessionId = null;
+    if (sessions.length === 0) {
+      sessions.push(await createSession());
+    }
+    await selectSession(sessions[0].session_id);
+    setStatus("");
+  } catch (error) {
+    showError(error.message || "Could not delete this chat.");
   }
 }
 

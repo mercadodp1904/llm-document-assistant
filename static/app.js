@@ -142,6 +142,7 @@ function renderMarkdown(markdown) {
   const html = [];
   let paragraph = [];
   let listItems = [];
+  let orderedListItems = [];
 
   function flushParagraph() {
     if (paragraph.length > 0) {
@@ -157,30 +158,49 @@ function renderMarkdown(markdown) {
     }
   }
 
+  function flushOrderedList() {
+    if (orderedListItems.length > 0) {
+      html.push(
+        `<ol>${orderedListItems.map((item) => `<li>${item}</li>`).join("")}</ol>`
+      );
+      orderedListItems = [];
+    }
+  }
+
   for (const line of lines) {
     const trimmedLine = line.trim();
     const heading = trimmedLine.match(/^(#{1,3})\s+(.+)$/);
     const listItem = trimmedLine.match(/^[*-]\s+(.+)$/);
+    const orderedListItem = trimmedLine.match(/^\d+[.)]\s+(.+)$/);
 
     if (!trimmedLine) {
       flushParagraph();
       flushList();
+      flushOrderedList();
     } else if (heading) {
       flushParagraph();
       flushList();
+      flushOrderedList();
       const level = heading[1].length;
       html.push(`<h${level}>${formatInlineMarkdown(heading[2])}</h${level}>`);
     } else if (listItem) {
       flushParagraph();
+      flushOrderedList();
       listItems.push(formatInlineMarkdown(listItem[1]));
+    } else if (orderedListItem) {
+      flushParagraph();
+      flushList();
+      orderedListItems.push(formatInlineMarkdown(orderedListItem[1]));
     } else {
       flushList();
+      flushOrderedList();
       paragraph.push(formatInlineMarkdown(trimmedLine));
     }
   }
 
   flushParagraph();
   flushList();
+  flushOrderedList();
   return html.join("");
 }
 

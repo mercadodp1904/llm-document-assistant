@@ -59,3 +59,32 @@ def test_count_tokens_uses_requested_model() -> None:
     assert result == 42
     call = client_class.return_value.models.count_tokens.call_args
     assert call.kwargs == {"model": "test-model", "contents": "some text"}
+
+
+def test_count_tokens_keeps_client_alive(monkeypatch):
+    import gc
+    import weakref
+
+    import llm_client
+
+    state = {}
+
+    class FakeModels:
+        def count_tokens(self, model, contents):
+            gc.collect()
+            state["client_alive"] = state["ref"]() is not None
+            return type("Result", (), {"total_tokens": 7})()
+
+    class FakeClient:
+        def __init__(self):
+            self.models = FakeModels()
+
+    def fake_get_client():
+        client = FakeClient()
+        state["ref"] = weakref.ref(client)
+        return client
+
+    monkeypatch.setattr(llm_client, "_get_client", fake_get_client)
+
+    assert llm_client.count_tokens("hello") == 7
+    assert state["client_alive"]

@@ -36,6 +36,9 @@ Users authenticate, create chat sessions, upload one or more PDFs, and ask quest
 - Keep the LLM provider behind its wrapper so it can be swapped without changing business logic.
 - Keep retrieval local and avoid a hosted vector database.
 - Do not imply certainty beyond the source material.
+- Design work is limited to the frontend files in static/. Do not change API routes, response shapes, or backend code.
+- Do not add CDN scripts or other external runtime dependencies. Prefer system fonts or self-hosted font files.
+- Users can see which documents each answer was based on.
 
 ## Brand Commitments
 

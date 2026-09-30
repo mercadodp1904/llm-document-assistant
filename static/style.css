@@ -598,9 +598,29 @@ input[type="file"] {
 }
 
 .sources {
+  border-top: 1px solid var(--line);
+  margin: 18px 0 0;
+  padding-top: 14px;
+}
+
+.sources h3 {
+  color: var(--ink);
+  font: 700 0.7rem/1.3 Arial, sans-serif;
+  letter-spacing: 0.08em;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+}
+
+.source-filenames,
+.source-note {
   color: var(--muted);
-  font: 0.7rem/1.5 Arial, sans-serif;
-  margin: 8px 0 0;
+  font: 0.74rem/1.5 Arial, sans-serif;
+  margin: 7px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.source-filenames {
+  font-weight: 700;
 }
 
 .composer-area {

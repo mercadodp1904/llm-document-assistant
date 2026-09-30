@@ -519,10 +519,25 @@ function renderExchange(question, answer, sources) {
 
   exchange.append(questionLabel, answerLabel);
   if (sources && sources.length > 0) {
-    const sourcesElement = document.createElement("p");
+    const sourcesElement = document.createElement("section");
     sourcesElement.className = "sources";
+    sourcesElement.setAttribute("aria-label", "Sources used for this answer");
+
+    const sourcesHeading = document.createElement("h3");
+    sourcesHeading.textContent = "Evidence used";
+    sourcesElement.append(sourcesHeading);
+
+    const sourceFilenames = document.createElement("p");
+    sourceFilenames.className = "source-filenames";
     const filenames = [...new Set(sources.map((source) => source.filename))];
-    sourcesElement.textContent = `Sources: ${filenames.join(", ")}`;
+    sourceFilenames.textContent = filenames.join(", ");
+
+    const sourceNote = document.createElement("p");
+    sourceNote.className = "source-note";
+    sourceNote.textContent =
+      "Based on these documents. Check important details in the original file.";
+
+    sourcesElement.append(sourceFilenames, sourceNote);
     answerLabel.append(sourcesElement);
   }
 

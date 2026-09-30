@@ -5,7 +5,7 @@ from io import BytesIO
 import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pypdf import PdfReader
 
 from chunking import split_text
@@ -15,7 +15,8 @@ from llm_client import count_tokens
 from retriever import InMemoryRetriever
 from api.auth import create_access_token, create_user, get_chat_session
 from api.auth import get_current_user, get_user_by_email
-from api.auth import create_chat_session, get_chat_sessions, get_conversation_history
+from api.auth import create_chat_session, delete_chat_session, get_chat_sessions
+from api.auth import get_conversation_history, rename_chat_session
 from api.auth import delete_session_document, get_session_documents, init_db
 from api.auth import replace_session_document, save_conversation_turn
 from api.auth import verify_password
@@ -49,6 +50,15 @@ class TokenResponse(BaseModel):
 class SessionCreateResponse(BaseModel):
     session_id: str
     created_at: str
+
+
+class SessionRenameRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value
 
 
 class SessionResponse(BaseModel):
@@ -153,6 +163,34 @@ async def list_sessions(
             for session in get_chat_sessions(current_user)
         ]
     )
+
+
+@router.patch("/sessions/{session_id}", response_model=SessionResponse)
+async def rename_session(
+    session_id: str,
+    request: SessionRenameRequest,
+    current_user: str = Depends(get_current_user),
+) -> SessionResponse:
+    _require_owned_session(session_id, current_user)
+    session = rename_chat_session(session_id, request.title)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return SessionResponse(
+        session_id=session["session_id"],
+        title=session["title"],
+        created_at=session["created_at"],
+    )
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+async def delete_session(
+    session_id: str,
+    current_user: str = Depends(get_current_user),
+) -> None:
+    _require_owned_session(session_id, current_user)
+    if not delete_chat_session(session_id):
+        raise HTTPException(status_code=404, detail="Session not found")
+    return None
 
 
 @router.get(

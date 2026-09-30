@@ -162,6 +162,139 @@ def test_list_sessions_is_isolated_and_ordered(
     )
 
 
+def test_rename_session_trims_title_and_updates_session_list(
+    sessions_client: TestClient,
+) -> None:
+    session_id = _create_session(sessions_client, AUTH_HEADERS)
+
+    response = sessions_client.patch(
+        f"/sessions/{session_id}",
+        json={"title": "  Research notes  "},
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Research notes"
+    listed_sessions = sessions_client.get("/sessions", headers=AUTH_HEADERS).json()[
+        "sessions"
+    ]
+    assert next(session for session in listed_sessions if session["session_id"] == session_id)[
+        "title"
+    ] == "Research notes"
+
+
+@pytest.mark.parametrize("title", ["", "   ", "x" * 101])
+def test_rename_session_rejects_invalid_title(
+    sessions_client: TestClient, title: str
+) -> None:
+    session_id = _create_session(sessions_client, AUTH_HEADERS)
+
+    response = sessions_client.patch(
+        f"/sessions/{session_id}", json={"title": title}, headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 422
+
+
+def test_rename_session_rejects_unknown_foreign_and_unauthenticated_requests(
+    sessions_client: TestClient,
+) -> None:
+    owner_headers = {
+        "Authorization": f"Bearer {create_access_token('owner@example.com')}"
+    }
+    session_id = _create_session(sessions_client, owner_headers)
+
+    assert (
+        sessions_client.patch(
+            "/sessions/missing", json={"title": "Missing"}, headers=AUTH_HEADERS
+        ).status_code
+        == 404
+    )
+    assert (
+        sessions_client.patch(
+            f"/sessions/{session_id}",
+            json={"title": "Foreign"},
+            headers=AUTH_HEADERS,
+        ).status_code
+        == 403
+    )
+    assert (
+        sessions_client.patch(f"/sessions/{session_id}", json={"title": "No auth"}).status_code
+        == 401
+    )
+
+
+def test_delete_session_removes_only_target_session_data(
+    sessions_client: TestClient,
+) -> None:
+    owner_session = _create_session(sessions_client, AUTH_HEADERS)
+    second_session = _create_session(sessions_client, AUTH_HEADERS)
+    foreign_headers = {
+        "Authorization": f"Bearer {create_access_token('foreign@example.com')}"
+    }
+    foreign_session = _create_session(sessions_client, foreign_headers)
+
+    auth.save_conversation_turn("test@example.com", owner_session, "owner", "answer")
+    auth.save_session_document(owner_session, "owner.pdf", ["owner"], [[1.0]], "owner")
+    auth.save_conversation_turn("test@example.com", second_session, "second", "answer")
+    auth.save_session_document(second_session, "second.pdf", ["second"], [[1.0]], "second")
+    auth.save_conversation_turn("foreign@example.com", foreign_session, "foreign", "answer")
+    auth.save_session_document(foreign_session, "foreign.pdf", ["foreign"], [[1.0]], "foreign")
+
+    response = sessions_client.delete(
+        f"/sessions/{owner_session}", headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 204
+    assert auth.get_chat_session(owner_session) is None
+    assert auth.get_conversation_history(owner_session) == []
+    assert auth.get_session_documents(owner_session) == []
+    assert auth.get_conversation_history(second_session)
+    assert auth.get_session_documents(second_session)
+    assert auth.get_chat_session(foreign_session) is not None
+    assert auth.get_conversation_history(foreign_session)
+    assert auth.get_session_documents(foreign_session)
+    remaining_sessions = sessions_client.get("/sessions", headers=AUTH_HEADERS).json()[
+        "sessions"
+    ]
+    assert {session["session_id"] for session in remaining_sessions} == {second_session}
+
+
+def test_delete_session_rejects_unknown_foreign_and_unauthenticated_requests(
+    sessions_client: TestClient,
+) -> None:
+    owner_headers = {
+        "Authorization": f"Bearer {create_access_token('owner@example.com')}"
+    }
+    session_id = _create_session(sessions_client, owner_headers)
+
+    assert sessions_client.delete("/sessions/missing", headers=AUTH_HEADERS).status_code == 404
+    assert sessions_client.delete(
+        f"/sessions/{session_id}", headers=AUTH_HEADERS
+    ).status_code == 403
+    assert sessions_client.delete(f"/sessions/{session_id}").status_code == 401
+
+
+def test_delete_session_is_not_repeatable_and_history_is_not_found(
+    sessions_client: TestClient,
+) -> None:
+    session_id = _create_session(sessions_client, AUTH_HEADERS)
+
+    first_response = sessions_client.delete(
+        f"/sessions/{session_id}", headers=AUTH_HEADERS
+    )
+    second_response = sessions_client.delete(
+        f"/sessions/{session_id}", headers=AUTH_HEADERS
+    )
+    history_response = sessions_client.get(
+        "/history", params={"session_id": session_id}, headers=AUTH_HEADERS
+    )
+
+    assert first_response.status_code == 204
+    assert second_response.status_code == 404
+    assert history_response.status_code == 404
+
+
 def test_list_session_documents_requires_authentication(
     sessions_client: TestClient,
 ) -> None:

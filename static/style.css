@@ -312,8 +312,20 @@ input[type="file"] {
   font: 0.8rem/1.4 Arial, sans-serif;
   gap: 8px;
   min-width: 0;
-  overflow-wrap: anywhere;
   padding: 8px 6px;
+}
+
+.session-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-action-wrapper {
+  flex-shrink: 0;
+  position: relative;
 }
 
 .session-list li::before {

@@ -9,7 +9,14 @@
   --soft-accent: #fff0e9;
   --dark: #27352f;
   --user-bubble: #e5eee5;
-  font-family: Georgia, "Times New Roman", serif;
+  --font-body: ui-serif, Georgia, "Times New Roman", serif;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  font-family: var(--font-body);
 }
 
 * {
@@ -61,7 +68,7 @@ body {
 }
 
 .auth-panel h1 {
-  font-size: 2rem;
+  font-size: var(--text-2xl);
   font-weight: 400;
   margin: 0 0 8px;
 }
@@ -78,7 +85,8 @@ body {
 }
 
 .auth-form label {
-  font: 700 0.68rem Arial, sans-serif;
+  font-size: var(--text-xs);
+  font-weight: 700;
   margin-top: 8px;
   text-transform: uppercase;
 }
@@ -87,7 +95,6 @@ body {
   background: #fcfdfa;
   border: 1px solid var(--line);
   color: var(--ink);
-  font: 1rem Georgia, serif;
   padding: 12px 13px;
 }
 
@@ -100,7 +107,8 @@ body {
   background: var(--soft-accent);
   border-left: 3px solid var(--accent);
   color: var(--accent-dark);
-  font: 0.76rem/1.4 Arial, sans-serif;
+  font-size: var(--text-sm);
+  line-height: 1.4;
   margin: 8px 0 4px;
   padding: 9px;
 }
@@ -111,7 +119,8 @@ body {
   color: var(--accent-dark);
   cursor: pointer;
   display: block;
-  font: 700 0.72rem Arial, sans-serif;
+  font-size: var(--text-xs);
+  font-weight: 700;
   margin: 20px auto 0;
   padding: 4px;
 }
@@ -131,14 +140,15 @@ body {
   background: var(--accent);
   color: #fff;
   display: flex;
-  font: 700 1rem Arial, sans-serif;
+  font-size: var(--text-md);
+  font-weight: 700;
   height: 30px;
   justify-content: center;
   width: 30px;
 }
 
 .app-header h1 {
-  font-size: 1rem;
+  font-size: var(--text-md);
   font-weight: 700;
   letter-spacing: 0;
   margin: 0 0 3px;
@@ -146,7 +156,7 @@ body {
 
 .app-header p {
   color: var(--muted);
-  font: 0.73rem Arial, sans-serif;
+  font-size: var(--text-sm);
   margin: 0;
 }
 
@@ -177,14 +187,16 @@ body {
 
 .eyebrow {
   color: var(--accent-dark);
-  font: 700 0.65rem/1.2 Arial, sans-serif;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: 1.2;
   letter-spacing: 0.14em;
   margin: 0 0 8px;
   text-transform: uppercase;
 }
 
 .sidebar h2 {
-  font-size: 1.35rem;
+  font-size: var(--text-xl);
   font-weight: 400;
   margin: 0;
 }
@@ -221,7 +233,9 @@ input[type="file"] {
 .file-icon {
   background: var(--soft-accent);
   color: var(--accent-dark);
-  font: 700 0.56rem/1 Arial, sans-serif;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: 1;
   padding: 7px 4px;
 }
 
@@ -232,7 +246,7 @@ input[type="file"] {
 }
 
 .file-copy strong {
-  font-size: 0.84rem;
+  font-size: var(--text-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -240,19 +254,21 @@ input[type="file"] {
 
 .file-copy small {
   color: var(--muted);
-  font: 0.68rem Arial, sans-serif;
+  font-size: var(--text-xs);
 }
 
 .browse-text {
   color: var(--accent-dark);
-  font: 700 0.68rem Arial, sans-serif;
+  font-size: var(--text-xs);
+  font-weight: 700;
   margin-left: auto;
 }
 
 .button {
   border: 0;
   cursor: pointer;
-  font: 700 0.76rem Arial, sans-serif;
+  font-size: var(--text-sm);
+  font-weight: 700;
   padding: 11px 16px;
   transition: background 160ms ease, transform 160ms ease;
 }
@@ -285,7 +301,8 @@ input[type="file"] {
   background: #edf7ee;
   border-left: 3px solid #6ea27b;
   color: #3e6f50;
-  font: 0.76rem/1.4 Arial, sans-serif;
+  font-size: var(--text-sm);
+  line-height: 1.4;
   margin: 14px 0 0;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -309,7 +326,8 @@ input[type="file"] {
   align-items: center;
   cursor: pointer;
   display: flex;
-  font: 0.8rem/1.4 Arial, sans-serif;
+  font-size: var(--text-sm);
+  line-height: 1.4;
   gap: 8px;
   min-width: 0;
   padding: 8px 6px;
@@ -350,7 +368,8 @@ input[type="file"] {
 
 .uploaded-documents h3 {
   color: var(--muted);
-  font: 700 0.65rem Arial, sans-serif;
+  font-size: var(--text-xs);
+  font-weight: 700;
   letter-spacing: 0.1em;
   margin: 0 0 9px;
   text-transform: uppercase;
@@ -385,7 +404,8 @@ input[type="file"] {
 .document-name {
   color: var(--ink);
   flex: 1;
-  font: 0.8rem/1.4 Arial, sans-serif;
+  font-size: var(--text-sm);
+  line-height: 1.4;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -405,7 +425,9 @@ input[type="file"] {
   color: var(--ink);
   cursor: pointer;
   display: inline-flex;
-  font: 700 1rem/1 Arial, sans-serif;
+  font-size: var(--text-md);
+  font-weight: 700;
+  line-height: 1;
   height: 28px;
   justify-content: center;
   min-width: 28px;
@@ -441,7 +463,8 @@ input[type="file"] {
   color: var(--ink);
   cursor: pointer;
   display: block;
-  font: 0.76rem/1.4 Arial, sans-serif;
+  font-size: var(--text-sm);
+  line-height: 1.4;
   padding: 8px 12px;
   text-align: left;
   width: 100%;
@@ -459,7 +482,8 @@ input[type="file"] {
 
 .sidebar-note {
   color: var(--muted);
-  font: 0.72rem/1.5 Arial, sans-serif;
+  font-size: var(--text-xs);
+  line-height: 1.5;
   margin: 24px 0 0;
 }
 
@@ -468,7 +492,8 @@ input[type="file"] {
   border: 1px solid var(--line);
   color: var(--muted);
   cursor: pointer;
-  font: 700 0.7rem Arial, sans-serif;
+  font-size: var(--text-xs);
+  font-weight: 700;
   margin-top: auto;
   padding: 10px 12px;
   text-align: left;
@@ -511,7 +536,8 @@ input[type="file"] {
   background: var(--soft-accent);
   color: var(--accent-dark);
   display: flex;
-  font: 700 1.2rem Georgia, serif;
+  font-size: var(--text-lg);
+  font-weight: 700;
   height: 42px;
   justify-content: center;
   margin-bottom: 16px;
@@ -520,13 +546,13 @@ input[type="file"] {
 
 .empty-state h2 {
   color: var(--ink);
-  font-size: 1.5rem;
+  font-size: var(--text-xl);
   font-weight: 400;
   margin: 0 0 8px;
 }
 
 .empty-state p {
-  font-size: 0.95rem;
+  font-size: var(--text-md);
   line-height: 1.5;
   margin: 0;
 }
@@ -540,7 +566,8 @@ input[type="file"] {
 
 .message-label {
   color: var(--muted);
-  font: 700 0.64rem Arial, sans-serif;
+  font-size: var(--text-xs);
+  font-weight: 700;
   letter-spacing: 0.1em;
   margin-bottom: 7px;
   text-transform: uppercase;
@@ -553,7 +580,7 @@ input[type="file"] {
 .question-message {
   background: var(--user-bubble);
   border-radius: 12px 12px 2px 12px;
-  font-size: 1rem;
+  font-size: var(--text-md);
   line-height: 1.45;
   margin: 0;
   max-width: min(80%, 600px);
@@ -568,12 +595,12 @@ input[type="file"] {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 2px 12px 12px 12px;
-  font-size: 1.05rem;
+  font-size: var(--text-md);
   line-height: 1.55;
   max-height: 440px;
   overflow-y: auto;
   padding: 15px 18px;
-  width: min(90%, 720px);
+  width: min(100%, 68ch);
 }
 
 .answer-message p {
@@ -605,7 +632,9 @@ input[type="file"] {
 
 .sources h3 {
   color: var(--ink);
-  font: 700 0.7rem/1.3 Arial, sans-serif;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: 1.3;
   letter-spacing: 0.08em;
   margin: 0 0 10px;
   text-transform: uppercase;
@@ -614,7 +643,8 @@ input[type="file"] {
 .source-filenames,
 .source-note {
   color: var(--muted);
-  font: 0.74rem/1.5 Arial, sans-serif;
+  font-size: var(--text-xs);
+  line-height: 1.5;
   margin: 7px 0 0;
   overflow-wrap: anywhere;
 }
@@ -664,7 +694,7 @@ input[type="text"]:focus {
 
 .composer-hint {
   color: var(--muted);
-  font: 0.65rem Arial, sans-serif;
+  font-size: var(--text-xs);
   margin: 8px auto 0;
   max-width: 760px;
 }
@@ -676,6 +706,12 @@ input[type="text"]:focus {
   overflow: hidden;
   position: absolute;
   width: 1px;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
 }
 
 @media (max-width: 700px) {

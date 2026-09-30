@@ -24,9 +24,9 @@ def _get_client() -> Any:
 
 def count_tokens(text: str, model: str = DEFAULT_MODEL) -> int:
     """Return the model's token count for the supplied text."""
-    result = _get_client().models.count_tokens(model=model, contents=text)
+    client = _get_client()
+    result = client.models.count_tokens(model=model, contents=text)
     return result.total_tokens
-
 
 def answer_question(
     question: str,

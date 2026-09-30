@@ -142,6 +142,7 @@ function renderMarkdown(markdown) {
   const html = [];
   let paragraph = [];
   let listItems = [];
+  let orderedListItems = [];
 
   function flushParagraph() {
     if (paragraph.length > 0) {
@@ -157,30 +158,49 @@ function renderMarkdown(markdown) {
     }
   }
 
+  function flushOrderedList() {
+    if (orderedListItems.length > 0) {
+      html.push(
+        `<ol>${orderedListItems.map((item) => `<li>${item}</li>`).join("")}</ol>`
+      );
+      orderedListItems = [];
+    }
+  }
+
   for (const line of lines) {
     const trimmedLine = line.trim();
     const heading = trimmedLine.match(/^(#{1,3})\s+(.+)$/);
     const listItem = trimmedLine.match(/^[*-]\s+(.+)$/);
+    const orderedListItem = trimmedLine.match(/^\d+[.)]\s+(.+)$/);
 
     if (!trimmedLine) {
       flushParagraph();
       flushList();
+      flushOrderedList();
     } else if (heading) {
       flushParagraph();
       flushList();
+      flushOrderedList();
       const level = heading[1].length;
       html.push(`<h${level}>${formatInlineMarkdown(heading[2])}</h${level}>`);
     } else if (listItem) {
       flushParagraph();
+      flushOrderedList();
       listItems.push(formatInlineMarkdown(listItem[1]));
+    } else if (orderedListItem) {
+      flushParagraph();
+      flushList();
+      orderedListItems.push(formatInlineMarkdown(orderedListItem[1]));
     } else {
       flushList();
+      flushOrderedList();
       paragraph.push(formatInlineMarkdown(trimmedLine));
     }
   }
 
   flushParagraph();
   flushList();
+  flushOrderedList();
   return html.join("");
 }
 
@@ -519,10 +539,25 @@ function renderExchange(question, answer, sources) {
 
   exchange.append(questionLabel, answerLabel);
   if (sources && sources.length > 0) {
-    const sourcesElement = document.createElement("p");
+    const sourcesElement = document.createElement("section");
     sourcesElement.className = "sources";
+    sourcesElement.setAttribute("aria-label", "Sources used for this answer");
+
+    const sourcesHeading = document.createElement("h3");
+    sourcesHeading.textContent = "Evidence used";
+    sourcesElement.append(sourcesHeading);
+
+    const sourceFilenames = document.createElement("p");
+    sourceFilenames.className = "source-filenames";
     const filenames = [...new Set(sources.map((source) => source.filename))];
-    sourcesElement.textContent = `Sources: ${filenames.join(", ")}`;
+    sourceFilenames.textContent = filenames.join(", ");
+
+    const sourceNote = document.createElement("p");
+    sourceNote.className = "source-note";
+    sourceNote.textContent =
+      "Based on these documents. Check important details in the original file.";
+
+    sourcesElement.append(sourceFilenames, sourceNote);
     answerLabel.append(sourcesElement);
   }
 

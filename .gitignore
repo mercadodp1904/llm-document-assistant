@@ -28,3 +28,4 @@ htmlcov/
 uploaded_docs/
 *.faiss
 *.index
+.impeccable/

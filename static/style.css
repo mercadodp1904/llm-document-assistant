@@ -301,7 +301,7 @@ input[type="file"] {
 .button:disabled {
   cursor: not-allowed;
   font-weight: 400;
-  opacity: 0.45;
+  opacity: 1;
 }
 
 .button-primary {
@@ -321,6 +321,11 @@ input[type="file"] {
 
 .button-dark:hover:not(:disabled) {
   background: var(--accent-dark);
+}
+
+.button-dark:disabled {
+  background: var(--status-background);
+  color: var(--status-ink);
 }
 
 .confirmation {
@@ -709,6 +714,12 @@ input[type="text"] {
 input[type="text"]:focus {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+input[type="text"]:disabled {
+  background: var(--status-background);
+  color: var(--status-ink);
+  cursor: not-allowed;
 }
 
 input::placeholder {

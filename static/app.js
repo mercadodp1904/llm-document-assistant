@@ -751,6 +751,9 @@ async function askQuestion() {
       timestamp: new Date(),
     });
     renderExchange(question, data.answer, data.sources);
+    if (questionInput.value.trim() === question) {
+      questionInput.value = "";
+    }
     setStatus("");
   } catch (error) {
     if (sessionId === currentSessionId) {

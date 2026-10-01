@@ -4,8 +4,12 @@ const TOKEN_KEY = "access_token";
 const uploadedDocuments = [];
 const conversationHistory = [];
 const sessions = [];
+const pendingRequestSessions = new Set();
 let currentSessionId = null;
 let conversationHistoryLoaded = false;
+let documentsLoaded = false;
+let sessionLoadFailed = false;
+let composerState = "loading";
 let openActionMenu = null;
 
 const authScreen = document.querySelector("#auth-screen");
@@ -29,6 +33,7 @@ const fileDrop = document.querySelector(".file-drop");
 const askForm = document.querySelector("#ask-form");
 const questionInput = document.querySelector("#question");
 const askButton = document.querySelector("#ask-button");
+const composerHelper = document.querySelector("#composer-helper");
 const statusElement = document.querySelector("#status");
 const exchangeElement = document.querySelector("#exchange");
 const sessionListElement = document.querySelector("#session-list");
@@ -80,12 +85,14 @@ function resetConversationView() {
   uploadedDocuments.length = 0;
   conversationHistory.length = 0;
   conversationHistoryLoaded = false;
+  documentsLoaded = false;
+  sessionLoadFailed = false;
   renderUploadedDocuments();
   uploadConfirmation.hidden = true;
   exchangeElement.innerHTML = `<div class="empty-state"><span class="empty-icon" aria-hidden="true">?</span><h2>What would you like to know?</h2><p>Upload a PDF, then ask a question to start a conversation.</p></div>`;
   questionInput.value = "";
-  questionInput.disabled = true;
-  askButton.disabled = true;
+  setStatus("");
+  setComposerState("loading");
 }
 
 function resetWorkspace() {
@@ -331,10 +338,40 @@ function createActionMenu(items, label = "Actions") {
   return { button, menu };
 }
 
+function setComposerState(state) {
+  composerState = state;
+  const isReady = state === "ready";
+  const isSending = state === "sending";
+  const hasQuestion = questionInput.value.trim().length > 0;
+
+  questionInput.disabled = !isReady;
+  askButton.disabled = !isReady || !hasQuestion;
+  askButton.textContent = isSending ? "Sending..." : "Ask";
+  askForm.setAttribute("aria-busy", String(isSending));
+
+  if (state === "loading") {
+    composerHelper.textContent = "Loading your documents...";
+  } else if (state === "no-documents") {
+    composerHelper.textContent = "Upload a document to start.";
+  } else if (state === "sending") {
+    composerHelper.textContent = "Preparing an answer from your documents...";
+  } else {
+    composerHelper.textContent = "Ask a question about your uploaded documents.";
+  }
+}
+
 function updateAskAvailability() {
-  const canAsk = conversationHistoryLoaded && uploadedDocuments.length > 0;
-  questionInput.disabled = !canAsk;
-  askButton.disabled = !canAsk;
+  if (sessionLoadFailed) {
+    setComposerState("no-documents");
+  } else if (!conversationHistoryLoaded || !documentsLoaded) {
+    setComposerState("loading");
+  } else if (pendingRequestSessions.has(currentSessionId)) {
+    setComposerState("sending");
+  } else if (uploadedDocuments.length > 0) {
+    setComposerState("ready");
+  } else {
+    setComposerState("no-documents");
+  }
 }
 
 function renderUploadedDocuments() {
@@ -374,7 +411,12 @@ async function onUploadSuccess(fileName, response) {
     ? `${fileName} was already in this chat, so the old version was replaced.`
     : `✓ ${fileName} uploaded — ready for questions`;
   uploadConfirmation.hidden = false;
+  const shouldRestoreFocus =
+    document.activeElement === document.body || document.activeElement === askButton;
   updateAskAvailability();
+  if (shouldRestoreFocus) {
+    questionInput.focus();
+  }
   setStatus("");
 }
 
@@ -566,27 +608,46 @@ function renderExchange(question, answer, sources) {
 }
 
 async function loadConversationHistory() {
+  const sessionId = currentSessionId;
+  let loadFailed = false;
   try {
-    const response = await authenticatedFetch(`/history?session_id=${encodeURIComponent(currentSessionId)}`);
+    const response = await authenticatedFetch(`/history?session_id=${encodeURIComponent(sessionId)}`);
     if (!response.ok) {
       throw new Error(await readApiError(response, "Conversation history could not be loaded."));
     }
     const history = await response.json();
+    if (sessionId !== currentSessionId) {
+      return;
+    }
     for (const turn of history) {
       renderExchange(turn.question, turn.answer, []);
     }
   } catch (error) {
-    showError(error.message || "Conversation history could not be loaded.");
+    loadFailed = true;
+    if (sessionId === currentSessionId) {
+      sessionLoadFailed = true;
+      showError(error.message || "Conversation history could not be loaded.");
+    }
   } finally {
+    if (sessionId !== currentSessionId) {
+      return;
+    }
     conversationHistoryLoaded = true;
-    updateAskAvailability();
+    if (loadFailed) {
+      sessionLoadFailed = true;
+      setComposerState("no-documents");
+    } else {
+      updateAskAvailability();
+    }
   }
 }
 
 async function loadSessionDocuments() {
+  const sessionId = currentSessionId;
+  let loadFailed = false;
   try {
     const response = await authenticatedFetch(
-      `/sessions/${encodeURIComponent(currentSessionId)}/documents`
+      `/sessions/${encodeURIComponent(sessionId)}/documents`
     );
     if (!response.ok) {
       throw new Error(
@@ -594,15 +655,31 @@ async function loadSessionDocuments() {
       );
     }
     const data = await response.json();
+    if (sessionId !== currentSessionId) {
+      return;
+    }
     uploadedDocuments.length = 0;
     uploadedDocuments.push(
       ...data.documents.map((doc) => ({ docId: doc.doc_id, fileName: doc.filename }))
     );
     renderUploadedDocuments();
   } catch (error) {
-    showError(error.message || "Could not load this session's documents.");
+    loadFailed = true;
+    if (sessionId === currentSessionId) {
+      sessionLoadFailed = true;
+      showError(error.message || "Could not load this session's documents.");
+    }
   } finally {
-    updateAskAvailability();
+    if (sessionId !== currentSessionId) {
+      return;
+    }
+    documentsLoaded = true;
+    if (loadFailed) {
+      sessionLoadFailed = true;
+      setComposerState("no-documents");
+    } else {
+      updateAskAvailability();
+    }
   }
 }
 
@@ -628,8 +705,9 @@ async function startNewChat() {
 }
 
 async function askQuestion() {
+  const sessionId = currentSessionId;
   const question = questionInput.value.trim();
-  if (!currentSessionId) {
+  if (!sessionId) {
     showError("Select or start a chat first.");
     return;
   }
@@ -642,7 +720,12 @@ async function askQuestion() {
     return;
   }
 
-  askButton.disabled = true;
+  if (pendingRequestSessions.has(sessionId)) {
+    return;
+  }
+
+  pendingRequestSessions.add(sessionId);
+  setComposerState("sending");
   setStatus("Searching the document and preparing an answer...");
   try {
     const historyPayload = conversationHistory.map(({ question, answer }) => ({
@@ -652,12 +735,15 @@ async function askQuestion() {
     const response = await authenticatedFetch("/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, history: historyPayload, session_id: currentSessionId }),
+      body: JSON.stringify({ question, history: historyPayload, session_id: sessionId }),
     });
     if (!response.ok) {
       throw new Error(await readApiError(response, "The question could not be answered."));
     }
     const data = await response.json();
+    if (sessionId !== currentSessionId) {
+      return;
+    }
     conversationHistory.push({
       question,
       answer: data.answer,
@@ -667,9 +753,18 @@ async function askQuestion() {
     renderExchange(question, data.answer, data.sources);
     setStatus("");
   } catch (error) {
-    showError(error.message || "The question could not be answered.");
+    if (sessionId === currentSessionId) {
+      showError(error.message || "The question could not be answered.");
+    }
   } finally {
-    askButton.disabled = false;
+    pendingRequestSessions.delete(sessionId);
+    if (sessionId !== currentSessionId) {
+      return;
+    }
+    updateAskAvailability();
+    if (document.activeElement === document.body || document.activeElement === askButton) {
+      questionInput.focus();
+    }
   }
 }
 
@@ -730,6 +825,11 @@ uploadForm.addEventListener("submit", (event) => {
 askForm.addEventListener("submit", (event) => {
   event.preventDefault();
   askQuestion();
+});
+questionInput.addEventListener("input", () => {
+  if (composerState === "ready") {
+    setComposerState("ready");
+  }
 });
 document.addEventListener("click", (event) => {
   if (!openActionMenu) {

@@ -784,6 +784,11 @@ async function askQuestion() {
       body: JSON.stringify({ question, history: historyPayload, session_id: sessionId }),
     });
     if (!response.ok) {
+      if (response.status === 502) {
+        throw new Error(
+          "The service could not answer right now. It may be busy or unavailable. Please try again."
+        );
+      }
       throw new Error(await readApiError(response, "The question could not be answered."));
     }
     const data = await response.json();

@@ -297,13 +297,17 @@ function renderSessionList() {
   sessionListElement.replaceChildren();
   for (const session of sessions) {
     const item = document.createElement("li");
-    item.className = session.session_id === currentSessionId ? "active" : "";
-    item.addEventListener("click", () => selectSession(session.session_id));
+    item.className = `session-list-item${session.session_id === currentSessionId ? " active" : ""}`;
 
-    const title = document.createElement("span");
-    title.className = "session-title";
-    title.textContent = sessionLabel(session);
-    title.title = title.textContent;
+    const sessionSelect = document.createElement("button");
+    sessionSelect.type = "button";
+    sessionSelect.className = "session-select";
+    sessionSelect.textContent = sessionLabel(session);
+    sessionSelect.title = sessionSelect.textContent;
+    if (session.session_id === currentSessionId) {
+      sessionSelect.setAttribute("aria-current", "true");
+    }
+    sessionSelect.addEventListener("click", () => selectSession(session.session_id));
 
     const actionWrapper = document.createElement("div");
     actionWrapper.className = "session-action-wrapper";
@@ -319,46 +323,50 @@ function renderSessionList() {
           onClick: () => deleteSession(session),
         },
       ],
-      "Session actions"
+      `Actions for ${sessionSelect.textContent}`,
+      `session-actions-${session.session_id}`
     );
     actionWrapper.append(button, menu);
-    item.append(title, actionWrapper);
+    item.append(sessionSelect, actionWrapper);
     sessionListElement.append(item);
   }
 }
 
-function closeActionMenu() {
+function closeActionMenu(restoreFocus = false) {
   if (!openActionMenu) {
     return;
   }
   const { button, menu } = openActionMenu;
+  if (restoreFocus) {
+    button.focus();
+  }
   button.setAttribute("aria-expanded", "false");
   menu.hidden = true;
   openActionMenu = null;
 }
 
-function createActionMenu(items, label = "Actions") {
+function createActionMenu(items, label = "Actions", menuId) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "action-menu-button";
   button.setAttribute("aria-label", label);
-  button.setAttribute("aria-haspopup", "menu");
   button.setAttribute("aria-expanded", "false");
   button.textContent = "⋯";
 
   const menu = document.createElement("div");
   menu.className = "action-menu";
+  menu.id = menuId;
   menu.hidden = true;
-  menu.setAttribute("role", "menu");
+  button.setAttribute("aria-controls", menu.id);
 
   for (const item of items) {
     const actionButton = document.createElement("button");
     actionButton.type = "button";
     actionButton.className = `action-menu-item${item.danger ? " danger" : ""}`;
     actionButton.textContent = item.label;
-    actionButton.setAttribute("role", "menuitem");
     actionButton.addEventListener("click", (event) => {
       event.stopPropagation();
+      button.focus();
       closeActionMenu();
       item.onClick();
     });
@@ -368,13 +376,14 @@ function createActionMenu(items, label = "Actions") {
   button.addEventListener("click", (event) => {
     event.stopPropagation();
     if (openActionMenu && openActionMenu.button === button) {
-      closeActionMenu();
+      closeActionMenu(true);
       return;
     }
     closeActionMenu();
     button.setAttribute("aria-expanded", "true");
     menu.hidden = false;
     openActionMenu = { button, menu };
+    menu.querySelector("button")?.focus();
   });
 
   return { button, menu };
@@ -435,7 +444,7 @@ function renderUploadedDocuments() {
         danger: true,
         onClick: () => deleteDocument(uploadedDocument.docId, uploadedDocument.fileName),
       },
-    ], "Document actions");
+    ], `Actions for ${uploadedDocument.fileName}`, `document-actions-${uploadedDocument.docId}`);
     actionWrapper.append(button, menu);
 
     item.append(fileName, actionWrapper);
@@ -907,9 +916,18 @@ document.addEventListener("click", (event) => {
     closeActionMenu();
   }
 });
+document.addEventListener("focusout", (event) => {
+  if (!openActionMenu || !(event.relatedTarget instanceof Element)) {
+    return;
+  }
+  const { button, menu } = openActionMenu;
+  if (!button.contains(event.relatedTarget) && !menu.contains(event.relatedTarget)) {
+    closeActionMenu();
+  }
+});
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && openActionMenu) {
-    closeActionMenu();
+    closeActionMenu(true);
   }
 });
 

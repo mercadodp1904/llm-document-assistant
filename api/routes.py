@@ -258,7 +258,7 @@ async def delete_document(
 
 
 @router.post("/ask", response_model=AskResponse)
-async def ask_question(
+def ask_question(
     request: AskRequest,
     current_user: str = Depends(get_current_user),
 ) -> AskResponse:

@@ -1,5 +1,14 @@
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const TOKEN_KEY = "access_token";
+const NETWORK_ERROR_MESSAGE =
+  "We couldn't reach the service. Check your connection and try again.";
+
+class FetchNetworkError extends Error {
+  constructor() {
+    super(NETWORK_ERROR_MESSAGE);
+    this.name = "FetchNetworkError";
+  }
+}
 
 const uploadedDocuments = [];
 const conversationHistory = [];
@@ -11,6 +20,7 @@ let documentsLoaded = false;
 let sessionLoadFailed = false;
 let composerState = "loading";
 let openActionMenu = null;
+let failedQuestion = null;
 
 const authScreen = document.querySelector("#auth-screen");
 const shell = document.querySelector(".shell");
@@ -33,6 +43,7 @@ const fileDrop = document.querySelector(".file-drop");
 const askForm = document.querySelector("#ask-form");
 const questionInput = document.querySelector("#question");
 const askButton = document.querySelector("#ask-button");
+const retryButton = document.querySelector("#retry-button");
 const composerHelper = document.querySelector("#composer-helper");
 const statusElement = document.querySelector("#status");
 const exchangeElement = document.querySelector("#exchange");
@@ -91,6 +102,7 @@ function resetConversationView() {
   uploadConfirmation.hidden = true;
   exchangeElement.innerHTML = `<div class="empty-state"><span class="empty-icon" aria-hidden="true">?</span><h2>What would you like to know?</h2><p>Upload a PDF, then ask a question to start a conversation.</p></div>`;
   questionInput.value = "";
+  clearRetry();
   setStatus("");
   setComposerState("loading");
 }
@@ -115,7 +127,15 @@ async function authenticatedFetch(url, options = {}) {
   const token = getToken();
   const headers = new Headers(options.headers || {});
   headers.set("Authorization", `Bearer ${token}`);
-  const response = await fetch(url, { ...options, headers });
+  let response;
+  try {
+    response = await fetch(url, { ...options, headers });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new FetchNetworkError();
+    }
+    throw error;
+  }
   if (response.status === 401) {
     logout();
     throw new Error("Your session has expired. Please log in again.");
@@ -129,6 +149,20 @@ function setStatus(message) {
 
 function showError(message) {
   setStatus(message);
+}
+
+function clearRetry() {
+  failedQuestion = null;
+  retryButton.hidden = true;
+}
+
+function showRetry(question) {
+  if (questionInput.value.trim() !== question) {
+    clearRetry();
+    return;
+  }
+  failedQuestion = question;
+  retryButton.hidden = false;
 }
 
 function escapeHtml(text) {
@@ -402,8 +436,11 @@ function renderUploadedDocuments() {
   uploadedDocumentsElement.hidden = uploadedDocuments.length === 0;
 }
 
-async function onUploadSuccess(fileName, response) {
+async function onUploadSuccess(fileName, response, sessionId) {
   await loadSessionDocuments();
+  if (sessionId !== currentSessionId) {
+    return;
+  }
   fileInput.value = "";
   updateFileLabel();
   const replaced = Boolean(response.replaced);
@@ -411,6 +448,7 @@ async function onUploadSuccess(fileName, response) {
     ? `${fileName} was already in this chat, so the old version was replaced.`
     : `✓ ${fileName} uploaded — ready for questions`;
   uploadConfirmation.hidden = false;
+  uploadConfirmation.scrollIntoView({ block: "nearest" });
   const shouldRestoreFocus =
     document.activeElement === document.body || document.activeElement === askButton;
   updateAskAvailability();
@@ -537,19 +575,26 @@ async function uploadDocument() {
 
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("session_id", currentSessionId);
+  const sessionId = currentSessionId;
+  formData.append("session_id", sessionId);
   uploadButton.disabled = true;
+  uploadButton.textContent = "Uploading...";
+  uploadForm.setAttribute("aria-busy", "true");
   setStatus("Uploading and indexing your document...");
   try {
     const response = await authenticatedFetch("/upload", { method: "POST", body: formData });
     if (!response.ok) {
       throw new Error(await readApiError(response, "Upload failed. Try another PDF."));
     }
-    await onUploadSuccess(file.name, await response.json());
+    await onUploadSuccess(file.name, await response.json(), sessionId);
   } catch (error) {
-    showError(error.message || "Upload failed. Please try again.");
+    if (sessionId === currentSessionId) {
+      showError(`Could not upload "${file.name}". ${error.message || "Please try again."}`);
+    }
   } finally {
     uploadButton.disabled = false;
+    uploadButton.textContent = "Upload PDF";
+    uploadForm.setAttribute("aria-busy", "false");
   }
 }
 
@@ -724,6 +769,7 @@ async function askQuestion() {
     return;
   }
 
+  clearRetry();
   pendingRequestSessions.add(sessionId);
   setComposerState("sending");
   setStatus("Searching the document and preparing an answer...");
@@ -754,10 +800,12 @@ async function askQuestion() {
     if (questionInput.value.trim() === question) {
       questionInput.value = "";
     }
+    clearRetry();
     setStatus("");
   } catch (error) {
     if (sessionId === currentSessionId) {
       showError(error.message || "The question could not be answered.");
+      showRetry(question);
     }
   } finally {
     pendingRequestSessions.delete(sessionId);
@@ -830,6 +878,9 @@ askForm.addEventListener("submit", (event) => {
   askQuestion();
 });
 questionInput.addEventListener("input", () => {
+  if (!retryButton.hidden) {
+    clearRetry();
+  }
   if (composerState === "ready") {
     setComposerState("ready");
   }
@@ -860,6 +911,7 @@ registerForm.addEventListener("submit", (event) => {
 });
 logoutButton.addEventListener("click", logout);
 newChatButton.addEventListener("click", startNewChat);
+retryButton.addEventListener("click", () => askQuestion());
 
 if (getToken()) {
   showMainApp();

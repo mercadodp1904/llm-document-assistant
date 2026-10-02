@@ -328,6 +328,11 @@ input[type="file"] {
   color: var(--status-ink);
 }
 
+.retry-button {
+  display: block;
+  margin: 0 auto var(--space-2);
+}
+
 .confirmation {
   background: var(--status-background);
   border-left: 3px solid var(--status-border);

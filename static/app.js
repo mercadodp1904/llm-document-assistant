@@ -123,6 +123,14 @@ function logout() {
   showAuthScreen();
 }
 
+function expireSession() {
+  sessionStorage.removeItem(TOKEN_KEY);
+  resetWorkspace();
+  showAuthScreen();
+  loginError.textContent = "Your session has expired. Please log in again.";
+  loginError.hidden = false;
+}
+
 async function authenticatedFetch(url, options = {}) {
   const token = getToken();
   const headers = new Headers(options.headers || {});
@@ -137,7 +145,7 @@ async function authenticatedFetch(url, options = {}) {
     throw error;
   }
   if (response.status === 401) {
-    logout();
+    expireSession();
     throw new Error("Your session has expired. Please log in again.");
   }
   return response;

@@ -1,12 +1,26 @@
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const TOKEN_KEY = "access_token";
+const NETWORK_ERROR_MESSAGE =
+  "We couldn't reach the service. Check your connection and try again.";
+
+class FetchNetworkError extends Error {
+  constructor() {
+    super(NETWORK_ERROR_MESSAGE);
+    this.name = "FetchNetworkError";
+  }
+}
 
 const uploadedDocuments = [];
 const conversationHistory = [];
 const sessions = [];
+const pendingRequestSessions = new Set();
 let currentSessionId = null;
 let conversationHistoryLoaded = false;
+let documentsLoaded = false;
+let sessionLoadFailed = false;
+let composerState = "loading";
 let openActionMenu = null;
+let failedQuestion = null;
 
 const authScreen = document.querySelector("#auth-screen");
 const shell = document.querySelector(".shell");
@@ -29,6 +43,8 @@ const fileDrop = document.querySelector(".file-drop");
 const askForm = document.querySelector("#ask-form");
 const questionInput = document.querySelector("#question");
 const askButton = document.querySelector("#ask-button");
+const retryButton = document.querySelector("#retry-button");
+const composerHelper = document.querySelector("#composer-helper");
 const statusElement = document.querySelector("#status");
 const exchangeElement = document.querySelector("#exchange");
 const sessionListElement = document.querySelector("#session-list");
@@ -80,12 +96,15 @@ function resetConversationView() {
   uploadedDocuments.length = 0;
   conversationHistory.length = 0;
   conversationHistoryLoaded = false;
+  documentsLoaded = false;
+  sessionLoadFailed = false;
   renderUploadedDocuments();
   uploadConfirmation.hidden = true;
   exchangeElement.innerHTML = `<div class="empty-state"><span class="empty-icon" aria-hidden="true">?</span><h2>What would you like to know?</h2><p>Upload a PDF, then ask a question to start a conversation.</p></div>`;
   questionInput.value = "";
-  questionInput.disabled = true;
-  askButton.disabled = true;
+  clearRetry();
+  setStatus("");
+  setComposerState("loading");
 }
 
 function resetWorkspace() {
@@ -104,13 +123,29 @@ function logout() {
   showAuthScreen();
 }
 
+function expireSession() {
+  sessionStorage.removeItem(TOKEN_KEY);
+  resetWorkspace();
+  showAuthScreen();
+  loginError.textContent = "Your session has expired. Please log in again.";
+  loginError.hidden = false;
+}
+
 async function authenticatedFetch(url, options = {}) {
   const token = getToken();
   const headers = new Headers(options.headers || {});
   headers.set("Authorization", `Bearer ${token}`);
-  const response = await fetch(url, { ...options, headers });
+  let response;
+  try {
+    response = await fetch(url, { ...options, headers });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new FetchNetworkError();
+    }
+    throw error;
+  }
   if (response.status === 401) {
-    logout();
+    expireSession();
     throw new Error("Your session has expired. Please log in again.");
   }
   return response;
@@ -122,6 +157,20 @@ function setStatus(message) {
 
 function showError(message) {
   setStatus(message);
+}
+
+function clearRetry() {
+  failedQuestion = null;
+  retryButton.hidden = true;
+}
+
+function showRetry(question) {
+  if (questionInput.value.trim() !== question) {
+    clearRetry();
+    return;
+  }
+  failedQuestion = question;
+  retryButton.hidden = false;
 }
 
 function escapeHtml(text) {
@@ -244,17 +293,111 @@ function sessionLabel(session) {
   return session.title || `Chat from ${new Date(session.created_at).toLocaleString()}`;
 }
 
+function findSessionListItem(sessionId) {
+  return [...sessionListElement.children].find(
+    (item) => item.dataset.sessionId === sessionId
+  );
+}
+
+function findSessionControl(sessionId, control) {
+  const item = findSessionListItem(sessionId);
+  if (!item) {
+    return null;
+  }
+  if (control === "title") {
+    return item.querySelector(".session-select");
+  }
+  return item.querySelector(".action-menu-button");
+}
+
+function captureSessionListFocus() {
+  const activeElement = document.activeElement;
+  if (!(activeElement instanceof Element) || !sessionListElement.contains(activeElement)) {
+    return null;
+  }
+
+  const item = activeElement.closest(".session-list-item");
+  if (!item || !sessionListElement.contains(item)) {
+    return null;
+  }
+
+  if (activeElement.matches(".session-select")) {
+    return { sessionId: item.dataset.sessionId, control: "title" };
+  }
+  if (activeElement.matches(".action-menu-button")) {
+    return { sessionId: item.dataset.sessionId, control: "options" };
+  }
+  if (activeElement.matches(".action-menu-item")) {
+    return { sessionId: item.dataset.sessionId, control: "menu-action" };
+  }
+  return null;
+}
+
+function restoreSessionListFocus(focusState) {
+  if (!focusState) {
+    return false;
+  }
+  const control = findSessionControl(
+    focusState.sessionId,
+    focusState.control === "title" ? "title" : "options"
+  );
+  if (!control) {
+    return false;
+  }
+  control.focus();
+  return true;
+}
+
+function focusSessionTitle(sessionId) {
+  return restoreSessionListFocus({ sessionId, control: "title" });
+}
+
+function focusSessionOptionsTrigger(sessionId) {
+  return restoreSessionListFocus({ sessionId, control: "options" });
+}
+
+function setSessionRowDisabled(sessionId, disabled) {
+  const item = findSessionListItem(sessionId);
+  if (!item) {
+    return;
+  }
+  item.querySelectorAll("button").forEach((button) => {
+    button.disabled = disabled;
+  });
+}
+
+function focusDeletedSessionNeighbor(sessionId) {
+  if (sessionId && focusSessionTitle(sessionId)) {
+    return;
+  }
+  const firstTitle = sessionListElement.querySelector(".session-select");
+  if (firstTitle) {
+    firstTitle.focus();
+    return;
+  }
+  newChatButton.focus();
+}
+
 function renderSessionList() {
+  const focusState = captureSessionListFocus();
+  if (openActionMenu) {
+    closeActionMenu();
+  }
   sessionListElement.replaceChildren();
   for (const session of sessions) {
     const item = document.createElement("li");
-    item.className = session.session_id === currentSessionId ? "active" : "";
-    item.addEventListener("click", () => selectSession(session.session_id));
+    item.dataset.sessionId = session.session_id;
+    item.className = `session-list-item${session.session_id === currentSessionId ? " active" : ""}`;
 
-    const title = document.createElement("span");
-    title.className = "session-title";
-    title.textContent = sessionLabel(session);
-    title.title = title.textContent;
+    const sessionSelect = document.createElement("button");
+    sessionSelect.type = "button";
+    sessionSelect.className = "session-select";
+    sessionSelect.textContent = sessionLabel(session);
+    sessionSelect.title = sessionSelect.textContent;
+    if (session.session_id === currentSessionId) {
+      sessionSelect.setAttribute("aria-current", "true");
+    }
+    sessionSelect.addEventListener("click", () => selectSession(session.session_id));
 
     const actionWrapper = document.createElement("div");
     actionWrapper.className = "session-action-wrapper";
@@ -270,46 +413,60 @@ function renderSessionList() {
           onClick: () => deleteSession(session),
         },
       ],
-      "Session actions"
+      `Actions for ${sessionSelect.textContent}`,
+      `session-actions-${session.session_id}`
     );
     actionWrapper.append(button, menu);
-    item.append(title, actionWrapper);
+    item.append(sessionSelect, actionWrapper);
     sessionListElement.append(item);
   }
+  restoreSessionListFocus(focusState);
 }
 
-function closeActionMenu() {
-  if (!openActionMenu) {
-    return;
+function closeActionMenu(restoreFocus = false) {
+  if (openActionMenu) {
+    const { button, menu } = openActionMenu;
+    if (restoreFocus) {
+      button.focus();
+    }
+    button.setAttribute("aria-expanded", "false");
+    menu.hidden = true;
   }
-  const { button, menu } = openActionMenu;
-  button.setAttribute("aria-expanded", "false");
-  menu.hidden = true;
+
+  document.querySelectorAll(".action-menu-button[aria-expanded=\"true\"]").forEach((button) => {
+    button.setAttribute("aria-expanded", "false");
+  });
+  document.querySelectorAll(".action-menu:not([hidden])").forEach((menu) => {
+    menu.hidden = true;
+  });
+  document.querySelectorAll(".action-menu.open").forEach((menu) => {
+    menu.classList.remove("open");
+  });
   openActionMenu = null;
 }
 
-function createActionMenu(items, label = "Actions") {
+function createActionMenu(items, label = "Actions", menuId) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "action-menu-button";
   button.setAttribute("aria-label", label);
-  button.setAttribute("aria-haspopup", "menu");
   button.setAttribute("aria-expanded", "false");
   button.textContent = "⋯";
 
   const menu = document.createElement("div");
   menu.className = "action-menu";
+  menu.id = menuId;
   menu.hidden = true;
-  menu.setAttribute("role", "menu");
+  button.setAttribute("aria-controls", menu.id);
 
   for (const item of items) {
     const actionButton = document.createElement("button");
     actionButton.type = "button";
     actionButton.className = `action-menu-item${item.danger ? " danger" : ""}`;
     actionButton.textContent = item.label;
-    actionButton.setAttribute("role", "menuitem");
     actionButton.addEventListener("click", (event) => {
       event.stopPropagation();
+      button.focus();
       closeActionMenu();
       item.onClick();
     });
@@ -319,22 +476,53 @@ function createActionMenu(items, label = "Actions") {
   button.addEventListener("click", (event) => {
     event.stopPropagation();
     if (openActionMenu && openActionMenu.button === button) {
-      closeActionMenu();
+      closeActionMenu(true);
       return;
     }
     closeActionMenu();
     button.setAttribute("aria-expanded", "true");
     menu.hidden = false;
     openActionMenu = { button, menu };
+    menu.querySelector("button")?.focus();
   });
 
   return { button, menu };
 }
 
+function setComposerState(state) {
+  composerState = state;
+  const isReady = state === "ready";
+  const isSending = state === "sending";
+  const hasQuestion = questionInput.value.trim().length > 0;
+
+  questionInput.disabled = !isReady;
+  askButton.disabled = !isReady || !hasQuestion;
+  askButton.textContent = isSending ? "Sending..." : "Ask";
+  askForm.setAttribute("aria-busy", String(isSending));
+
+  if (state === "loading") {
+    composerHelper.textContent = "Loading your documents...";
+  } else if (state === "no-documents") {
+    composerHelper.textContent = "Upload a document to start.";
+  } else if (state === "sending") {
+    composerHelper.textContent = "Preparing an answer from your documents...";
+  } else {
+    composerHelper.textContent = "Ask a question about your uploaded documents.";
+  }
+}
+
 function updateAskAvailability() {
-  const canAsk = conversationHistoryLoaded && uploadedDocuments.length > 0;
-  questionInput.disabled = !canAsk;
-  askButton.disabled = !canAsk;
+  if (sessionLoadFailed) {
+    setComposerState("no-documents");
+  } else if (!conversationHistoryLoaded || !documentsLoaded) {
+    setComposerState("loading");
+  } else if (pendingRequestSessions.has(currentSessionId)) {
+    setComposerState("sending");
+  } else if (uploadedDocuments.length > 0) {
+    setComposerState("ready");
+  } else {
+    setComposerState("no-documents");
+  }
 }
 
 function renderUploadedDocuments() {
@@ -356,7 +544,7 @@ function renderUploadedDocuments() {
         danger: true,
         onClick: () => deleteDocument(uploadedDocument.docId, uploadedDocument.fileName),
       },
-    ], "Document actions");
+    ], `Actions for ${uploadedDocument.fileName}`, `document-actions-${uploadedDocument.docId}`);
     actionWrapper.append(button, menu);
 
     item.append(fileName, actionWrapper);
@@ -365,8 +553,11 @@ function renderUploadedDocuments() {
   uploadedDocumentsElement.hidden = uploadedDocuments.length === 0;
 }
 
-async function onUploadSuccess(fileName, response) {
+async function onUploadSuccess(fileName, response, sessionId) {
   await loadSessionDocuments();
+  if (sessionId !== currentSessionId) {
+    return;
+  }
   fileInput.value = "";
   updateFileLabel();
   const replaced = Boolean(response.replaced);
@@ -374,7 +565,13 @@ async function onUploadSuccess(fileName, response) {
     ? `${fileName} was already in this chat, so the old version was replaced.`
     : `✓ ${fileName} uploaded — ready for questions`;
   uploadConfirmation.hidden = false;
+  uploadConfirmation.scrollIntoView({ block: "nearest" });
+  const shouldRestoreFocus =
+    document.activeElement === document.body || document.activeElement === askButton;
   updateAskAvailability();
+  if (shouldRestoreFocus) {
+    questionInput.focus();
+  }
   setStatus("");
 }
 
@@ -402,13 +599,16 @@ async function renameSession(session) {
   const currentTitle = sessionLabel(session);
   const enteredTitle = window.prompt("Rename this chat", currentTitle);
   if (enteredTitle === null) {
+    focusSessionOptionsTrigger(session.session_id);
     return;
   }
   const title = enteredTitle.trim();
   if (!title || title === currentTitle) {
+    focusSessionOptionsTrigger(session.session_id);
     return;
   }
 
+  setSessionRowDisabled(session.session_id, true);
   try {
     const response = await authenticatedFetch(
       `/sessions/${encodeURIComponent(session.session_id)}`,
@@ -427,6 +627,14 @@ async function renameSession(session) {
     setStatus("");
   } catch (error) {
     showError(error.message || "Could not rename this chat.");
+  } finally {
+    setSessionRowDisabled(session.session_id, false);
+    const canRestoreFocus =
+      document.activeElement === document.body ||
+      sessionListElement.contains(document.activeElement);
+    if (canRestoreFocus) {
+      focusSessionOptionsTrigger(session.session_id);
+    }
   }
 }
 
@@ -440,6 +648,13 @@ async function deleteSession(session) {
   }
 
   const wasActive = session.session_id === currentSessionId;
+  const sessionIndex = sessions.findIndex(
+    (candidate) => candidate.session_id === session.session_id
+  );
+  const neighborSessionId =
+    sessions[sessionIndex + 1]?.session_id || sessions[sessionIndex - 1]?.session_id || null;
+  let deleteSucceeded = false;
+  setSessionRowDisabled(session.session_id, true);
   try {
     const response = await authenticatedFetch(
       `/sessions/${encodeURIComponent(session.session_id)}`,
@@ -448,6 +663,7 @@ async function deleteSession(session) {
     if (!response.ok && response.status !== 404) {
       throw new Error(await readApiError(response, "Could not delete this chat."));
     }
+    deleteSucceeded = true;
     await loadSessions();
     if (!wasActive) {
       renderSessionList();
@@ -464,6 +680,18 @@ async function deleteSession(session) {
     setStatus("");
   } catch (error) {
     showError(error.message || "Could not delete this chat.");
+  } finally {
+    setSessionRowDisabled(session.session_id, false);
+    const canRestoreFocus =
+      document.activeElement === document.body ||
+      sessionListElement.contains(document.activeElement);
+    if (canRestoreFocus) {
+      if (deleteSucceeded) {
+        focusDeletedSessionNeighbor(neighborSessionId);
+      } else {
+        focusSessionOptionsTrigger(session.session_id);
+      }
+    }
   }
 }
 
@@ -495,19 +723,26 @@ async function uploadDocument() {
 
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("session_id", currentSessionId);
+  const sessionId = currentSessionId;
+  formData.append("session_id", sessionId);
   uploadButton.disabled = true;
+  uploadButton.textContent = "Uploading...";
+  uploadForm.setAttribute("aria-busy", "true");
   setStatus("Uploading and indexing your document...");
   try {
     const response = await authenticatedFetch("/upload", { method: "POST", body: formData });
     if (!response.ok) {
       throw new Error(await readApiError(response, "Upload failed. Try another PDF."));
     }
-    await onUploadSuccess(file.name, await response.json());
+    await onUploadSuccess(file.name, await response.json(), sessionId);
   } catch (error) {
-    showError(error.message || "Upload failed. Please try again.");
+    if (sessionId === currentSessionId) {
+      showError(`Could not upload "${file.name}". ${error.message || "Please try again."}`);
+    }
   } finally {
     uploadButton.disabled = false;
+    uploadButton.textContent = "Upload PDF";
+    uploadForm.setAttribute("aria-busy", "false");
   }
 }
 
@@ -566,27 +801,46 @@ function renderExchange(question, answer, sources) {
 }
 
 async function loadConversationHistory() {
+  const sessionId = currentSessionId;
+  let loadFailed = false;
   try {
-    const response = await authenticatedFetch(`/history?session_id=${encodeURIComponent(currentSessionId)}`);
+    const response = await authenticatedFetch(`/history?session_id=${encodeURIComponent(sessionId)}`);
     if (!response.ok) {
       throw new Error(await readApiError(response, "Conversation history could not be loaded."));
     }
     const history = await response.json();
+    if (sessionId !== currentSessionId) {
+      return;
+    }
     for (const turn of history) {
       renderExchange(turn.question, turn.answer, []);
     }
   } catch (error) {
-    showError(error.message || "Conversation history could not be loaded.");
+    loadFailed = true;
+    if (sessionId === currentSessionId) {
+      sessionLoadFailed = true;
+      showError(error.message || "Conversation history could not be loaded.");
+    }
   } finally {
+    if (sessionId !== currentSessionId) {
+      return;
+    }
     conversationHistoryLoaded = true;
-    updateAskAvailability();
+    if (loadFailed) {
+      sessionLoadFailed = true;
+      setComposerState("no-documents");
+    } else {
+      updateAskAvailability();
+    }
   }
 }
 
 async function loadSessionDocuments() {
+  const sessionId = currentSessionId;
+  let loadFailed = false;
   try {
     const response = await authenticatedFetch(
-      `/sessions/${encodeURIComponent(currentSessionId)}/documents`
+      `/sessions/${encodeURIComponent(sessionId)}/documents`
     );
     if (!response.ok) {
       throw new Error(
@@ -594,15 +848,31 @@ async function loadSessionDocuments() {
       );
     }
     const data = await response.json();
+    if (sessionId !== currentSessionId) {
+      return;
+    }
     uploadedDocuments.length = 0;
     uploadedDocuments.push(
       ...data.documents.map((doc) => ({ docId: doc.doc_id, fileName: doc.filename }))
     );
     renderUploadedDocuments();
   } catch (error) {
-    showError(error.message || "Could not load this session's documents.");
+    loadFailed = true;
+    if (sessionId === currentSessionId) {
+      sessionLoadFailed = true;
+      showError(error.message || "Could not load this session's documents.");
+    }
   } finally {
-    updateAskAvailability();
+    if (sessionId !== currentSessionId) {
+      return;
+    }
+    documentsLoaded = true;
+    if (loadFailed) {
+      sessionLoadFailed = true;
+      setComposerState("no-documents");
+    } else {
+      updateAskAvailability();
+    }
   }
 }
 
@@ -628,8 +898,9 @@ async function startNewChat() {
 }
 
 async function askQuestion() {
+  const sessionId = currentSessionId;
   const question = questionInput.value.trim();
-  if (!currentSessionId) {
+  if (!sessionId) {
     showError("Select or start a chat first.");
     return;
   }
@@ -642,7 +913,13 @@ async function askQuestion() {
     return;
   }
 
-  askButton.disabled = true;
+  if (pendingRequestSessions.has(sessionId)) {
+    return;
+  }
+
+  clearRetry();
+  pendingRequestSessions.add(sessionId);
+  setComposerState("sending");
   setStatus("Searching the document and preparing an answer...");
   try {
     const historyPayload = conversationHistory.map(({ question, answer }) => ({
@@ -652,12 +929,20 @@ async function askQuestion() {
     const response = await authenticatedFetch("/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, history: historyPayload, session_id: currentSessionId }),
+      body: JSON.stringify({ question, history: historyPayload, session_id: sessionId }),
     });
     if (!response.ok) {
+      if (response.status === 502) {
+        throw new Error(
+          "The service could not answer right now. It may be busy or unavailable. Please try again."
+        );
+      }
       throw new Error(await readApiError(response, "The question could not be answered."));
     }
     const data = await response.json();
+    if (sessionId !== currentSessionId) {
+      return;
+    }
     conversationHistory.push({
       question,
       answer: data.answer,
@@ -665,11 +950,25 @@ async function askQuestion() {
       timestamp: new Date(),
     });
     renderExchange(question, data.answer, data.sources);
+    if (questionInput.value.trim() === question) {
+      questionInput.value = "";
+    }
+    clearRetry();
     setStatus("");
   } catch (error) {
-    showError(error.message || "The question could not be answered.");
+    if (sessionId === currentSessionId) {
+      showError(error.message || "The question could not be answered.");
+      showRetry(question);
+    }
   } finally {
-    askButton.disabled = false;
+    pendingRequestSessions.delete(sessionId);
+    if (sessionId !== currentSessionId) {
+      return;
+    }
+    updateAskAvailability();
+    if (document.activeElement === document.body || document.activeElement === askButton) {
+      questionInput.focus();
+    }
   }
 }
 
@@ -731,6 +1030,14 @@ askForm.addEventListener("submit", (event) => {
   event.preventDefault();
   askQuestion();
 });
+questionInput.addEventListener("input", () => {
+  if (!retryButton.hidden) {
+    clearRetry();
+  }
+  if (composerState === "ready") {
+    setComposerState("ready");
+  }
+});
 document.addEventListener("click", (event) => {
   if (!openActionMenu) {
     return;
@@ -740,9 +1047,18 @@ document.addEventListener("click", (event) => {
     closeActionMenu();
   }
 });
+document.addEventListener("focusout", (event) => {
+  if (!openActionMenu || !(event.relatedTarget instanceof Element)) {
+    return;
+  }
+  const { button, menu } = openActionMenu;
+  if (!button.contains(event.relatedTarget) && !menu.contains(event.relatedTarget)) {
+    closeActionMenu();
+  }
+});
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && openActionMenu) {
-    closeActionMenu();
+    closeActionMenu(true);
   }
 });
 
@@ -757,6 +1073,7 @@ registerForm.addEventListener("submit", (event) => {
 });
 logoutButton.addEventListener("click", logout);
 newChatButton.addEventListener("click", startNewChat);
+retryButton.addEventListener("click", () => askQuestion());
 
 if (getToken()) {
   showMainApp();

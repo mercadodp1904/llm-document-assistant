@@ -82,14 +82,15 @@
         </div>
         <div class="composer-area">
           <p id="status" class="status" role="status" aria-live="polite"></p>
-          <form id="ask-form" class="ask-form">
+          <button id="retry-button" class="button button-dark retry-button" type="button" hidden>Retry</button>
+          <form id="ask-form" class="ask-form" aria-busy="false">
             <label class="sr-only" for="question">Question</label>
             <div class="question-row">
-              <input id="question" name="question" type="text" placeholder="Ask a question about your documents..." autocomplete="off" disabled required>
+              <input id="question" name="question" type="text" placeholder="Ask a question about your documents..." autocomplete="off" aria-describedby="composer-helper" disabled required>
               <button id="ask-button" class="button button-dark" type="submit" disabled>Ask</button>
             </div>
           </form>
-          <p class="composer-hint">Answers are grounded in your uploaded documents.</p>
+          <p id="composer-helper" class="composer-hint">Loading your documents...</p>
         </div>
       </section>
     </section>

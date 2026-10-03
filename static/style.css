@@ -775,6 +775,23 @@ textarea {
   font: inherit;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  html,
+  .sidebar,
+  .exchange {
+    scroll-behavior: auto;
+  }
+
+  .file-drop,
+  .button {
+    transition: none;
+  }
+
+  .button:hover:not(:disabled) {
+    transform: none;
+  }
+}
+
 @media (max-width: 700px) {
   body {
     overflow: auto;

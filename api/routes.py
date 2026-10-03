@@ -211,7 +211,7 @@ async def list_session_documents(
 
 
 @router.post("/upload", response_model=UploadResponse)
-async def upload_document(
+def upload_document(
     file: UploadFile = File(...),
     session_id: str = Form(...),
     current_user: str = Depends(get_current_user),
@@ -221,7 +221,7 @@ async def upload_document(
     try:
         if file.content_type != "application/pdf":
             raise HTTPException(status_code=400, detail="Only PDF files are supported")
-        file_bytes = await file.read()
+        file_bytes = file.file.read()
         reader = PdfReader(BytesIO(file_bytes))
         text = "\n".join(page.extract_text() or "" for page in reader.pages)
         chunks = split_text(text)

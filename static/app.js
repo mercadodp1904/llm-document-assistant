@@ -1,4 +1,6 @@
-const MAX_FILE_SIZE = 20 * 1024 * 1024;
+// Keep this in sync with MAX_UPLOAD_BYTES in api/routes.py and the hint in index.html.
+const MAX_UPLOAD_MB = 25;
+const MAX_FILE_SIZE = MAX_UPLOAD_MB * 1024 * 1024;
 const TOKEN_KEY = "access_token";
 const NETWORK_ERROR_MESSAGE =
   "We couldn't reach the service. Check your connection and try again.";
@@ -710,7 +712,7 @@ async function uploadDocument() {
     return;
   }
   if (file.size > MAX_FILE_SIZE) {
-    showError("That file is larger than the 20 MB limit.");
+    showError(`File is too large (max ${MAX_UPLOAD_MB} MB)`);
     return;
   }
   const existingMatch = uploadedDocuments.some((doc) => doc.fileName === file.name);

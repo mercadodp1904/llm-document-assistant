@@ -1,5 +1,6 @@
 """test_routes.py"""
 from io import BytesIO
+import inspect
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,6 +11,7 @@ from pypdf import PdfWriter
 from api import auth
 from api.main import app
 from api.auth import create_access_token
+from api.routes import upload_document
 from llm_client import STUFF_THRESHOLD_TOKENS
 
 
@@ -38,6 +40,10 @@ def sessions_client(
 @pytest.fixture(autouse=True)
 def mock_token_count(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("api.routes.count_tokens", lambda *args, **kwargs: 1)
+
+
+def test_upload_handler_is_not_a_coroutine() -> None:
+    assert not inspect.iscoroutinefunction(upload_document)
 
 
 def _pdf_bytes(text: str) -> bytes:

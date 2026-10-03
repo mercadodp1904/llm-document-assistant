@@ -24,6 +24,7 @@ from api.auth import verify_password
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 init_db()
 
 
@@ -221,6 +222,12 @@ def upload_document(
     try:
         if file.content_type != "application/pdf":
             raise HTTPException(status_code=400, detail="Only PDF files are supported")
+        if file.size is not None and file.size > MAX_UPLOAD_BYTES:
+            max_upload_mb = MAX_UPLOAD_BYTES // (1024 * 1024)
+            raise HTTPException(
+                status_code=413,
+                detail=f"File is too large (max {max_upload_mb} MB)",
+            )
         file_bytes = file.file.read()
         reader = PdfReader(BytesIO(file_bytes))
         text = "\n".join(page.extract_text() or "" for page in reader.pages)

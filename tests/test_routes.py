@@ -66,11 +66,12 @@ def _upload_document(
     headers: dict[str, str],
     session_id: str,
     filename: str = "report.pdf",
+    file_bytes: bytes = b"fake pdf",
 ) -> object:
     return test_client.post(
         "/upload",
         data={"session_id": session_id},
-        files={"file": (filename, b"fake pdf", "application/pdf")},
+        files={"file": (filename, file_bytes, "application/pdf")},
         headers=headers,
     )
 
@@ -681,6 +682,64 @@ def test_upload_rejects_unknown_session(sessions_client: TestClient) -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Session not found"
+
+
+@pytest.mark.parametrize("file_size", [2_999_999, 3 * 1024 * 1024])
+def test_upload_accepts_files_at_or_below_limit(
+    sessions_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    file_size: int,
+) -> None:
+    monkeypatch.setattr("api.routes.MAX_UPLOAD_BYTES", 3 * 1024 * 1024)
+    session_id = _create_session(sessions_client, AUTH_HEADERS)
+    with patch("api.routes.PdfReader") as pdf_reader:
+        with patch("api.routes.split_text", return_value=["chunk"]) as split_text:
+            with patch(
+                "api.routes.generate_embeddings", return_value=[[1.0]]
+            ) as generate_embeddings:
+                with patch(
+                    "api.routes.replace_session_document",
+                    return_value=("doc-id", False),
+                ) as replace_session_document:
+                    response = _upload_document(
+                        sessions_client,
+                        AUTH_HEADERS,
+                        session_id,
+                        file_bytes=b"x" * file_size,
+                    )
+
+    assert response.status_code == 200
+    pdf_reader.assert_called_once()
+    split_text.assert_called_once()
+    generate_embeddings.assert_called_once_with(["chunk"])
+    replace_session_document.assert_called_once()
+
+
+def test_upload_rejects_file_above_limit_before_processing(
+    sessions_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("api.routes.MAX_UPLOAD_BYTES", 3 * 1024 * 1024)
+    session_id = _create_session(sessions_client, AUTH_HEADERS)
+    with patch("api.routes.PdfReader") as pdf_reader:
+        with patch("api.routes.split_text") as split_text:
+            with patch("api.routes.generate_embeddings") as generate_embeddings:
+                with patch(
+                    "api.routes.replace_session_document"
+                ) as replace_session_document:
+                    response = _upload_document(
+                        sessions_client,
+                        AUTH_HEADERS,
+                        session_id,
+                        file_bytes=b"x" * (3 * 1024 * 1024 + 1),
+                    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "File is too large (max 3 MB)"
+    pdf_reader.assert_not_called()
+    split_text.assert_not_called()
+    generate_embeddings.assert_not_called()
+    replace_session_document.assert_not_called()
+    assert auth.get_session_documents(session_id) == []
 
 
 def test_delete_document_removes_document_and_returns_204(

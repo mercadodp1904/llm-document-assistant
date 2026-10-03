@@ -293,10 +293,100 @@ function sessionLabel(session) {
   return session.title || `Chat from ${new Date(session.created_at).toLocaleString()}`;
 }
 
+function findSessionListItem(sessionId) {
+  return [...sessionListElement.children].find(
+    (item) => item.dataset.sessionId === sessionId
+  );
+}
+
+function findSessionControl(sessionId, control) {
+  const item = findSessionListItem(sessionId);
+  if (!item) {
+    return null;
+  }
+  if (control === "title") {
+    return item.querySelector(".session-select");
+  }
+  return item.querySelector(".action-menu-button");
+}
+
+function captureSessionListFocus() {
+  const activeElement = document.activeElement;
+  if (!(activeElement instanceof Element) || !sessionListElement.contains(activeElement)) {
+    return null;
+  }
+
+  const item = activeElement.closest(".session-list-item");
+  if (!item || !sessionListElement.contains(item)) {
+    return null;
+  }
+
+  if (activeElement.matches(".session-select")) {
+    return { sessionId: item.dataset.sessionId, control: "title" };
+  }
+  if (activeElement.matches(".action-menu-button")) {
+    return { sessionId: item.dataset.sessionId, control: "options" };
+  }
+  if (activeElement.matches(".action-menu-item")) {
+    return { sessionId: item.dataset.sessionId, control: "menu-action" };
+  }
+  return null;
+}
+
+function restoreSessionListFocus(focusState) {
+  if (!focusState) {
+    return false;
+  }
+  const control = findSessionControl(
+    focusState.sessionId,
+    focusState.control === "title" ? "title" : "options"
+  );
+  if (!control) {
+    return false;
+  }
+  control.focus();
+  return true;
+}
+
+function focusSessionTitle(sessionId) {
+  return restoreSessionListFocus({ sessionId, control: "title" });
+}
+
+function focusSessionOptionsTrigger(sessionId) {
+  return restoreSessionListFocus({ sessionId, control: "options" });
+}
+
+function setSessionRowDisabled(sessionId, disabled) {
+  const item = findSessionListItem(sessionId);
+  if (!item) {
+    return;
+  }
+  item.querySelectorAll("button").forEach((button) => {
+    button.disabled = disabled;
+  });
+}
+
+function focusDeletedSessionNeighbor(sessionId) {
+  if (sessionId && focusSessionTitle(sessionId)) {
+    return;
+  }
+  const firstTitle = sessionListElement.querySelector(".session-select");
+  if (firstTitle) {
+    firstTitle.focus();
+    return;
+  }
+  newChatButton.focus();
+}
+
 function renderSessionList() {
+  const focusState = captureSessionListFocus();
+  if (openActionMenu) {
+    closeActionMenu();
+  }
   sessionListElement.replaceChildren();
   for (const session of sessions) {
     const item = document.createElement("li");
+    item.dataset.sessionId = session.session_id;
     item.className = `session-list-item${session.session_id === currentSessionId ? " active" : ""}`;
 
     const sessionSelect = document.createElement("button");
@@ -330,18 +420,28 @@ function renderSessionList() {
     item.append(sessionSelect, actionWrapper);
     sessionListElement.append(item);
   }
+  restoreSessionListFocus(focusState);
 }
 
 function closeActionMenu(restoreFocus = false) {
-  if (!openActionMenu) {
-    return;
+  if (openActionMenu) {
+    const { button, menu } = openActionMenu;
+    if (restoreFocus) {
+      button.focus();
+    }
+    button.setAttribute("aria-expanded", "false");
+    menu.hidden = true;
   }
-  const { button, menu } = openActionMenu;
-  if (restoreFocus) {
-    button.focus();
-  }
-  button.setAttribute("aria-expanded", "false");
-  menu.hidden = true;
+
+  document.querySelectorAll(".action-menu-button[aria-expanded=\"true\"]").forEach((button) => {
+    button.setAttribute("aria-expanded", "false");
+  });
+  document.querySelectorAll(".action-menu:not([hidden])").forEach((menu) => {
+    menu.hidden = true;
+  });
+  document.querySelectorAll(".action-menu.open").forEach((menu) => {
+    menu.classList.remove("open");
+  });
   openActionMenu = null;
 }
 
@@ -499,13 +599,16 @@ async function renameSession(session) {
   const currentTitle = sessionLabel(session);
   const enteredTitle = window.prompt("Rename this chat", currentTitle);
   if (enteredTitle === null) {
+    focusSessionOptionsTrigger(session.session_id);
     return;
   }
   const title = enteredTitle.trim();
   if (!title || title === currentTitle) {
+    focusSessionOptionsTrigger(session.session_id);
     return;
   }
 
+  setSessionRowDisabled(session.session_id, true);
   try {
     const response = await authenticatedFetch(
       `/sessions/${encodeURIComponent(session.session_id)}`,
@@ -524,6 +627,14 @@ async function renameSession(session) {
     setStatus("");
   } catch (error) {
     showError(error.message || "Could not rename this chat.");
+  } finally {
+    setSessionRowDisabled(session.session_id, false);
+    const canRestoreFocus =
+      document.activeElement === document.body ||
+      sessionListElement.contains(document.activeElement);
+    if (canRestoreFocus) {
+      focusSessionOptionsTrigger(session.session_id);
+    }
   }
 }
 
@@ -537,6 +648,13 @@ async function deleteSession(session) {
   }
 
   const wasActive = session.session_id === currentSessionId;
+  const sessionIndex = sessions.findIndex(
+    (candidate) => candidate.session_id === session.session_id
+  );
+  const neighborSessionId =
+    sessions[sessionIndex + 1]?.session_id || sessions[sessionIndex - 1]?.session_id || null;
+  let deleteSucceeded = false;
+  setSessionRowDisabled(session.session_id, true);
   try {
     const response = await authenticatedFetch(
       `/sessions/${encodeURIComponent(session.session_id)}`,
@@ -545,6 +663,7 @@ async function deleteSession(session) {
     if (!response.ok && response.status !== 404) {
       throw new Error(await readApiError(response, "Could not delete this chat."));
     }
+    deleteSucceeded = true;
     await loadSessions();
     if (!wasActive) {
       renderSessionList();
@@ -561,6 +680,18 @@ async function deleteSession(session) {
     setStatus("");
   } catch (error) {
     showError(error.message || "Could not delete this chat.");
+  } finally {
+    setSessionRowDisabled(session.session_id, false);
+    const canRestoreFocus =
+      document.activeElement === document.body ||
+      sessionListElement.contains(document.activeElement);
+    if (canRestoreFocus) {
+      if (deleteSucceeded) {
+        focusDeletedSessionNeighbor(neighborSessionId);
+      } else {
+        focusSessionOptionsTrigger(session.session_id);
+      }
+    }
   }
 }
 

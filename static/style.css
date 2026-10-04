@@ -127,7 +127,7 @@ body {
 
 .auth-error {
   background: var(--soft-accent);
-  border-left: 3px solid var(--accent);
+  border: 1px solid var(--accent);
   color: var(--accent-dark);
   font-size: var(--text-sm);
   line-height: 1.4;
@@ -340,7 +340,7 @@ input[type="file"] {
 
 .confirmation {
   background: var(--status-background);
-  border-left: 3px solid var(--status-border);
+  border: 1px solid var(--status-border);
   color: var(--status-ink);
   font-size: var(--text-sm);
   line-height: 1.4;

@@ -80,8 +80,13 @@ body {
   width: 100%;
 }
 
-.auth-panel > .brand-mark {
-  margin-bottom: var(--space-7);
+.auth-wordmark {
+  align-items: center;
+  display: flex;
+  gap: var(--space-3);
+  font-size: var(--text-md);
+  font-weight: 700;
+  margin: 0 0 var(--space-7);
 }
 
 .auth-panel h1 {

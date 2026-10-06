@@ -301,6 +301,12 @@ function findSessionListItem(sessionId) {
   );
 }
 
+function findDocumentListItem(docId) {
+  return [...documentList.children].find(
+    (item) => item.dataset.docId === String(docId)
+  );
+}
+
 function findSessionControl(sessionId, control) {
   const item = findSessionListItem(sessionId);
   if (!item) {
@@ -527,11 +533,24 @@ function updateAskAvailability() {
   }
 }
 
+function focusDeletedDocumentNeighbor(docId) {
+  if (docId) {
+    const item = findDocumentListItem(docId);
+    const button = item?.querySelector(".action-menu-button");
+    if (button) {
+      button.focus();
+      return;
+    }
+  }
+  fileInput.focus();
+}
+
 function renderUploadedDocuments() {
   documentList.replaceChildren();
   for (const uploadedDocument of uploadedDocuments) {
     const item = document.createElement("li");
     item.className = "document-item";
+    item.dataset.docId = String(uploadedDocument.docId);
 
     const fileName = document.createElement("span");
     fileName.className = "document-name";
@@ -578,19 +597,36 @@ async function onUploadSuccess(fileName, response, sessionId) {
 }
 
 async function deleteDocument(docId, fileName) {
+  const sessionId = currentSessionId;
   if (!confirm(`Delete "${fileName}" from this chat?`)) {
     return;
   }
 
+  const documentIndex = uploadedDocuments.findIndex((doc) => doc.docId === docId);
+  const neighborDocId =
+    documentIndex === -1
+      ? null
+      : uploadedDocuments[documentIndex + 1]?.docId ||
+        uploadedDocuments[documentIndex - 1]?.docId ||
+        null;
+
   try {
     const response = await authenticatedFetch(
-      `/sessions/${encodeURIComponent(currentSessionId)}/documents/${encodeURIComponent(docId)}`,
+      `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(docId)}`,
       { method: "DELETE" }
     );
     if (!response.ok) {
       throw new Error(await readApiError(response, "Could not delete that document."));
     }
     await loadSessionDocuments();
+    const canRestoreFocus =
+      sessionId === currentSessionId &&
+      !findDocumentListItem(docId) &&
+      (document.activeElement === document.body ||
+        documentList.contains(document.activeElement));
+    if (canRestoreFocus) {
+      focusDeletedDocumentNeighbor(neighborDocId);
+    }
     setStatus("");
   } catch (error) {
     showError(error.message || "Could not delete that document.");

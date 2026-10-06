@@ -211,16 +211,6 @@ body {
   margin-top: var(--space-8);
 }
 
-.eyebrow {
-  color: var(--accent-dark);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: 0.14em;
-  margin: 0 0 8px;
-  text-transform: uppercase;
-}
-
 .sidebar h2 {
   font-size: var(--text-xl);
   font-weight: 400;

@@ -237,6 +237,8 @@ body {
 .file-drop.dragover {
   background: var(--soft-accent);
   border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 input[type="file"] {

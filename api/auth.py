@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import sqlite3
 import json
+import logging
 from uuid import uuid4
 
 from fastapi import Depends, HTTPException, status
@@ -20,6 +21,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
+logger = logging.getLogger(__name__)
 
 
 @contextmanager
@@ -36,6 +38,7 @@ def _get_connection() -> Iterator[sqlite3.Connection]:
 def init_db() -> None:
     """Create application tables when the application starts."""
     with _get_connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -167,6 +170,8 @@ def init_session_documents_table(
 ) -> None:
     """Create the session documents table if it does not exist."""
     if connection is not None:
+        if not connection.in_transaction:
+            connection.execute("BEGIN IMMEDIATE")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS session_documents (
@@ -187,6 +192,31 @@ def init_session_documents_table(
             connection.execute(
                 "ALTER TABLE session_documents ADD COLUMN raw_text TEXT NOT NULL DEFAULT ''"
             )
+        removed_count = connection.execute(
+            """
+            DELETE FROM session_documents
+            WHERE rowid NOT IN (
+                SELECT rowid
+                FROM (
+                    SELECT rowid,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY session_id, filename
+                               ORDER BY created_at DESC, rowid DESC
+                           ) AS row_number
+                    FROM session_documents
+                )
+                WHERE row_number = 1
+            )
+            """
+        ).rowcount
+        logger.info("Removed %d duplicate session document rows", removed_count)
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS
+                ux_session_documents_session_filename
+            ON session_documents (session_id, filename)
+            """
+        )
         return
 
     with _get_connection() as owned_connection:
@@ -275,6 +305,7 @@ def replace_session_document(
 ) -> tuple[str, bool]:
     doc_id = uuid4().hex
     with _get_connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
         existing_row = connection.execute(
             """
             SELECT doc_id

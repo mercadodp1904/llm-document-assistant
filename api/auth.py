@@ -209,7 +209,8 @@ def init_session_documents_table(
             )
             """
         ).rowcount
-        logger.info("Removed %d duplicate session document rows", removed_count)
+        if removed_count:
+            logger.warning("Removed %d duplicate session document rows", removed_count)
         connection.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS

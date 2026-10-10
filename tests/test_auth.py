@@ -1,5 +1,6 @@
 from pathlib import Path
 from contextlib import contextmanager
+import logging
 import sqlite3
 from threading import Barrier, BrokenBarrierError, Thread
 
@@ -166,9 +167,18 @@ def test_session_documents_dedupe_and_index_migration_is_idempotent(
     connection.commit()
     connection.close()
 
-    with caplog.at_level("INFO", logger="api.auth"):
+    with caplog.at_level("WARNING", logger="api.auth"):
         auth.init_db()
+    auth_records = [record for record in caplog.records if record.name == "api.auth"]
+    assert len(auth_records) == 1
+    assert auth_records[0].levelno == logging.WARNING
+    assert "Removed 1 duplicate session document rows" in caplog.text
+
+    caplog.clear()
     auth.init_db()
+    assert not [
+        record for record in caplog.records if record.name == "api.auth"
+    ]
 
     with sqlite3.connect(database_path) as migrated_connection:
         row = migrated_connection.execute(
@@ -182,7 +192,6 @@ def test_session_documents_dedupe_and_index_migration_is_idempotent(
     assert any(
         index[1] == "ux_session_documents_session_filename" for index in indexes
     )
-    assert "Removed 1 duplicate session document rows" in caplog.text
 
 
 def test_session_documents_unique_index_rejects_raw_duplicate_insert(
@@ -230,7 +239,7 @@ def test_replace_session_document_does_not_create_duplicate_rows_under_race(
 ) -> None:
     monkeypatch.setattr(auth, "DATABASE_PATH", tmp_path / "race.db")
     auth.init_db()
-    lookup_barrier = Barrier(2, timeout=5)
+    lookup_barrier = Barrier(2, timeout=1)
     original_get_connection = auth._get_connection
 
     @contextmanager
@@ -255,15 +264,18 @@ def test_replace_session_document_does_not_create_duplicate_rows_under_race(
 
     monkeypatch.setattr(auth, "_get_connection", paused_get_connection)
     errors: list[BaseException] = []
+    results: list[tuple[str, bool]] = []
 
     def replace_document(raw_text: str) -> None:
         try:
-            auth.replace_session_document(
-                "session",
-                "report.pdf",
-                [raw_text],
-                [[1.0]],
-                raw_text,
+            results.append(
+                auth.replace_session_document(
+                    "session",
+                    "report.pdf",
+                    [raw_text],
+                    [[1.0]],
+                    raw_text,
+                )
             )
         except BaseException as exc:
             errors.append(exc)
@@ -279,6 +291,11 @@ def test_replace_session_document_does_not_create_duplicate_rows_under_race(
 
     assert not errors
     assert all(not thread.is_alive() for thread in threads)
+    monkeypatch.setattr(auth, "_get_connection", original_get_connection)
+    assert sorted(replaced for _, replaced in results) == [False, True]
     rows = auth.get_session_documents("session")
 
     assert len(rows) == 1
+    replaced_doc_id = next(doc_id for doc_id, replaced in results if replaced)
+    assert rows[0]["doc_id"] == replaced_doc_id
+    assert rows[0]["raw_text"] in {"first", "second"}

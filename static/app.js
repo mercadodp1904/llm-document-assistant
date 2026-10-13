@@ -577,8 +577,11 @@ function renderUploadedDocuments() {
 }
 
 async function onUploadSuccess(fileName, response, sessionId) {
-  await loadSessionDocuments();
+  const documentsLoadedSuccessfully = await loadSessionDocuments();
   if (sessionId !== currentSessionId) {
+    return;
+  }
+  if (documentsLoadedSuccessfully === false) {
     return;
   }
   fileInput.value = "";

@@ -773,6 +773,42 @@ def test_delete_document_returns_not_found_for_unknown_document(
     assert response.status_code == 404
 
 
+def test_delete_document_rejects_document_from_different_session(
+    sessions_client: TestClient,
+) -> None:
+    first_session_id = _create_session(sessions_client, AUTH_HEADERS)
+    second_session_id = _create_session(sessions_client, AUTH_HEADERS)
+
+    with patch("api.routes.PdfReader", return_value=FakeReader("document text")):
+        with patch("api.routes.generate_embeddings", return_value=[[1.0]]):
+            upload_response = _upload_document(
+                sessions_client,
+                AUTH_HEADERS,
+                first_session_id,
+                "report.pdf",
+            )
+
+    assert upload_response.status_code == 200
+    doc_id = upload_response.json()["doc_id"]
+
+    delete_response = sessions_client.delete(
+        f"/sessions/{second_session_id}/documents/{doc_id}",
+        headers=AUTH_HEADERS,
+    )
+
+    assert delete_response.status_code == 404
+
+    documents_response = sessions_client.get(
+        f"/sessions/{first_session_id}/documents",
+        headers=AUTH_HEADERS,
+    )
+
+    assert documents_response.status_code == 200
+    assert documents_response.json() == {
+        "documents": [{"doc_id": doc_id, "filename": "report.pdf"}]
+    }
+
+
 def test_delete_document_rejects_foreign_session(
     sessions_client: TestClient,
 ) -> None:

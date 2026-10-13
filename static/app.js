@@ -19,7 +19,8 @@ const pendingRequestSessions = new Set();
 let currentSessionId = null;
 let conversationHistoryLoaded = false;
 let documentsLoaded = false;
-let sessionLoadFailed = false;
+let historyLoadFailed = false;
+let documentsLoadFailed = false;
 let composerState = "loading";
 let openActionMenu = null;
 let failedQuestion = null;
@@ -99,7 +100,8 @@ function resetConversationView() {
   conversationHistory.length = 0;
   conversationHistoryLoaded = false;
   documentsLoaded = false;
-  sessionLoadFailed = false;
+  historyLoadFailed = false;
+  documentsLoadFailed = false;
   renderUploadedDocuments();
   uploadConfirmation.hidden = true;
   exchangeElement.innerHTML = `<div class="empty-state"><span class="empty-icon" aria-hidden="true">?</span><h2>What would you like to know?</h2><p>Upload a PDF, then ask a question to start a conversation.</p></div>`;
@@ -520,7 +522,7 @@ function setComposerState(state) {
 }
 
 function updateAskAvailability() {
-  if (sessionLoadFailed) {
+  if (historyLoadFailed || documentsLoadFailed) {
     setComposerState("no-documents");
   } else if (!conversationHistoryLoaded || !documentsLoaded) {
     setComposerState("loading");
@@ -858,7 +860,7 @@ async function loadConversationHistory() {
   } catch (error) {
     loadFailed = true;
     if (sessionId === currentSessionId) {
-      sessionLoadFailed = true;
+      historyLoadFailed = true;
       showError(error.message || "Conversation history could not be loaded.");
     }
   } finally {
@@ -867,9 +869,10 @@ async function loadConversationHistory() {
     }
     conversationHistoryLoaded = true;
     if (loadFailed) {
-      sessionLoadFailed = true;
+      historyLoadFailed = true;
       setComposerState("no-documents");
     } else {
+      historyLoadFailed = false;
       updateAskAvailability();
     }
   }
@@ -899,7 +902,7 @@ async function loadSessionDocuments() {
   } catch (error) {
     loadFailed = true;
     if (sessionId === currentSessionId) {
-      sessionLoadFailed = true;
+      documentsLoadFailed = true;
       showError(error.message || "Could not load this session's documents.");
     }
   } finally {
@@ -908,9 +911,10 @@ async function loadSessionDocuments() {
     }
     documentsLoaded = true;
     if (loadFailed) {
-      sessionLoadFailed = true;
+      documentsLoadFailed = true;
       setComposerState("no-documents");
     } else {
+      documentsLoadFailed = false;
       updateAskAvailability();
     }
   }

@@ -618,7 +618,9 @@ async function deleteDocument(docId, fileName) {
     if (!response.ok && response.status !== 404) {
       throw new Error(await readApiError(response, "Could not delete that document."));
     }
-    await loadSessionDocuments();
+    if (!(await loadSessionDocuments())) {
+      return;
+    }
     const canRestoreFocus =
       sessionId === currentSessionId &&
       !findDocumentListItem(docId) &&
@@ -912,6 +914,7 @@ async function loadSessionDocuments() {
       updateAskAvailability();
     }
   }
+  return !loadFailed;
 }
 
 async function selectSession(sessionId) {

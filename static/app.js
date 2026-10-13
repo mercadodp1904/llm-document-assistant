@@ -615,7 +615,7 @@ async function deleteDocument(docId, fileName) {
       `/sessions/${encodeURIComponent(sessionId)}/documents/${encodeURIComponent(docId)}`,
       { method: "DELETE" }
     );
-    if (!response.ok) {
+    if (!response.ok && response.status !== 404) {
       throw new Error(await readApiError(response, "Could not delete that document."));
     }
     await loadSessionDocuments();

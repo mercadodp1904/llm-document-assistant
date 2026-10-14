@@ -147,6 +147,11 @@ body {
   padding: 4px;
 }
 
+.auth-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .app-header {
   align-items: center;
   background: var(--panel);
@@ -549,6 +554,11 @@ input[type="file"] {
 .logout-button:hover {
   border-color: var(--accent);
   color: var(--accent-dark);
+}
+
+.logout-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .chat-panel {

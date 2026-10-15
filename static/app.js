@@ -85,6 +85,7 @@ async function showMainApp() {
     await loadConversationHistory();
     await loadSessionDocuments();
   } catch (error) {
+    setComposerState("no-documents");
     showError(error.message || "Could not load your chats.");
   }
 }

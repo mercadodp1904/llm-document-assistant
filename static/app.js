@@ -792,7 +792,7 @@ async function uploadDocument() {
   }
 }
 
-function renderExchange(question, answer, sources) {
+function renderExchange(question, answer, sources, answerMode) {
   exchangeElement.querySelector(".empty-state")?.remove();
 
   const exchange = document.createElement("article");
@@ -817,6 +817,17 @@ function renderExchange(question, answer, sources) {
   answerMessage.className = "answer-message";
   answerMessage.innerHTML = renderMarkdown(answer);
   answerLabel.append(answerName, answerMessage);
+
+  const answerModeLabels = {
+    full_document: "Answered from the full text of your documents",
+    retrieved_passages: "Answered from selected passages",
+  };
+  if (answerModeLabels[answerMode]) {
+    const modeLabel = document.createElement("p");
+    modeLabel.className = "source-note";
+    modeLabel.textContent = answerModeLabels[answerMode];
+    answerLabel.append(modeLabel);
+  }
 
   exchange.append(questionLabel, answerLabel);
   if (sources && sources.length > 0) {
@@ -998,7 +1009,7 @@ async function askQuestion() {
       sources: data.sources,
       timestamp: new Date(),
     });
-    renderExchange(question, data.answer, data.sources);
+    renderExchange(question, data.answer, data.sources, data.answer_mode);
     if (questionInput.value.trim() === question) {
       questionInput.value = "";
     }

@@ -91,22 +91,24 @@ class FakeReader:
 
 def test_ask_returns_answer_for_uploaded_document(history_client: TestClient) -> None:
     session_id = _create_session(history_client, AUTH_HEADERS)
-    with patch("api.routes.PdfReader", return_value=FakeReader("context")):
-        with patch("api.routes.answer_question", return_value="grounded answer"):
-            with patch("api.routes.generate_embeddings", return_value=[[1.0]]):
-                upload_response = _upload_document(
-                    history_client, AUTH_HEADERS, session_id
-                )
-                response = history_client.post(
-                    "/ask",
-                    json={"session_id": session_id, "question": "What?"},
-                    headers=AUTH_HEADERS,
-                )
+    with patch("api.routes.count_tokens", return_value=10):
+        with patch("api.routes.PdfReader", return_value=FakeReader("context")):
+            with patch("api.routes.answer_question", return_value="grounded answer"):
+                with patch("api.routes.generate_embeddings", return_value=[[1.0]]):
+                    upload_response = _upload_document(
+                        history_client, AUTH_HEADERS, session_id
+                    )
+                    response = history_client.post(
+                        "/ask",
+                        json={"session_id": session_id, "question": "What?"},
+                        headers=AUTH_HEADERS,
+                    )
 
     assert upload_response.status_code == 200
     assert response.status_code == 200
     assert response.json() == {
         "answer": "grounded answer",
+        "answer_mode": "full_document",
         "sources": [
             {
                 "doc_id": upload_response.json()["doc_id"],
@@ -514,6 +516,7 @@ def test_ask_stuffs_small_documents_without_retrieval(
                     )
 
     assert response.status_code == 200
+    assert response.json()["answer_mode"] == "full_document"
     source = response.json()["sources"][0]
     assert source["filename"] == "report.pdf"
     assert source["text"] == "The complete report text."
@@ -550,6 +553,7 @@ def test_ask_uses_retrieval_at_or_above_threshold(
                     )
 
     assert response.status_code == 200
+    assert response.json()["answer_mode"] == "retrieved_passages"
     embeddings.assert_called_once_with(["What?"])
     retriever.assert_called_once()
     assert response.json()["sources"][0]["text"] == "retrieved chunk"

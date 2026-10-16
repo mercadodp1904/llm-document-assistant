@@ -3,6 +3,7 @@
 import json
 from io import BytesIO
 import logging
+from enum import Enum
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field, field_validator
@@ -104,9 +105,15 @@ class SourceReference(BaseModel):
     text: str
 
 
+class AnswerMode(str, Enum):
+    FULL_DOCUMENT = "full_document"
+    RETRIEVED_PASSAGES = "retrieved_passages"
+
+
 class AskResponse(BaseModel):
     answer: str
     sources: list[SourceReference]
+    answer_mode: AnswerMode
 
 
 def _require_owned_session(session_id: str, current_user: str) -> None:
@@ -281,6 +288,7 @@ def ask_question(
             for document in session_documents
         )
         if total_tokens < STUFF_THRESHOLD_TOKENS:
+            answer_mode = AnswerMode.FULL_DOCUMENT
             selected_chunks = [
                 (0.0, document["doc_id"], document["filename"], document["raw_text"])
                 for document in session_documents
@@ -291,6 +299,7 @@ def ask_question(
                 total_tokens,
             )
         else:
+            answer_mode = AnswerMode.RETRIEVED_PASSAGES
             query_vectors = generate_embeddings([request.question])
             if not query_vectors:
                 raise ValueError("Could not generate a query embedding")
@@ -336,7 +345,11 @@ def ask_question(
         SourceReference(doc_id=doc_id, filename=filename, text=chunk)
         for _, doc_id, filename, chunk in selected_chunks
     ]
-    return AskResponse(answer=answer, sources=sources)
+    return AskResponse(
+        answer=answer,
+        sources=sources,
+        answer_mode=answer_mode,
+    )
 
 
 @router.get("/history", response_model=list[HistoryResponseTurn])

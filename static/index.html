@@ -46,33 +46,36 @@
 
     <section class="app-body" aria-label="Document question and answer workspace">
       <aside class="sidebar">
-        <div class="sidebar-heading">
-          <h2>Sessions</h2>
-        </div>
-        <button id="new-chat-button" class="button button-primary" type="button">+ New chat</button>
-        <ul id="session-list" class="session-list"></ul>
-        <div class="sidebar-heading sidebar-heading-secondary">
-          <h2>Documents</h2>
-        </div>
-        <form id="upload-form" class="upload-form">
-          <label class="file-drop" for="document-file">
-            <span class="file-icon" aria-hidden="true">PDF</span>
-            <span class="file-copy">
-              <strong id="file-label">Add a PDF</strong>
-              <small>25 MB maximum</small>
-            </span>
-            <span class="browse-text">Browse</span>
-          </label>
-          <input id="document-file" name="file" type="file" accept="application/pdf,.pdf" required>
-          <button id="upload-button" class="button button-primary" type="submit">Upload PDF</button>
-        </form>
-        <p id="upload-confirmation" class="confirmation" role="status" hidden></p>
-        <div id="uploaded-documents" class="uploaded-documents" hidden>
-          <h3>Uploaded</h3>
-          <ul id="document-list" class="document-list"></ul>
-        </div>
-        <p class="sidebar-note">Upload multiple documents to search them together.</p>
-        <button id="logout-button" class="logout-button" type="button">Log out</button>
+        <details class="sidebar-disclosure" open>
+          <summary class="sidebar-toggle">Sessions and documents</summary>
+          <div class="sidebar-heading">
+            <h2>Sessions</h2>
+          </div>
+          <button id="new-chat-button" class="button button-primary" type="button">+ New chat</button>
+          <ul id="session-list" class="session-list"></ul>
+          <div class="sidebar-heading sidebar-heading-secondary">
+            <h2>Documents</h2>
+          </div>
+          <form id="upload-form" class="upload-form">
+            <label class="file-drop" for="document-file">
+              <span class="file-icon" aria-hidden="true">PDF</span>
+              <span class="file-copy">
+                <strong id="file-label">Add a PDF</strong>
+                <small>25 MB maximum</small>
+              </span>
+              <span class="browse-text">Browse</span>
+            </label>
+            <input id="document-file" name="file" type="file" accept="application/pdf,.pdf" required>
+            <button id="upload-button" class="button button-primary" type="submit">Upload PDF</button>
+          </form>
+          <p id="upload-confirmation" class="confirmation" role="status" hidden></p>
+          <div id="uploaded-documents" class="uploaded-documents" hidden>
+            <h3>Uploaded</h3>
+            <ul id="document-list" class="document-list"></ul>
+          </div>
+          <p class="sidebar-note">Upload multiple documents to search them together.</p>
+          <button id="logout-button" class="logout-button" type="button">Log out</button>
+        </details>
       </aside>
 
       <section class="chat-panel" aria-label="Chat with your documents">

@@ -52,6 +52,15 @@ const statusElement = document.querySelector("#status");
 const exchangeElement = document.querySelector("#exchange");
 const sessionListElement = document.querySelector("#session-list");
 const newChatButton = document.querySelector("#new-chat-button");
+const sidebarDisclosure = document.querySelector(".sidebar-disclosure");
+const mobileSidebarQuery = window.matchMedia("(max-width: 700px)");
+
+function syncSidebarDisclosure() {
+  sidebarDisclosure.open = !mobileSidebarQuery.matches;
+}
+
+syncSidebarDisclosure();
+mobileSidebarQuery.addEventListener("change", syncSidebarDisclosure);
 
 function getToken() {
   return sessionStorage.getItem(TOKEN_KEY);

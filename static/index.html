@@ -78,9 +78,20 @@
       <section class="chat-panel" aria-label="Chat with your documents">
         <div id="exchange" class="exchange" aria-live="polite">
           <div class="empty-state">
-            <span class="empty-icon" aria-hidden="true">?</span>
-            <h2>What would you like to know?</h2>
-            <p>Upload a PDF, then ask a question to start a conversation.</p>
+            <span class="empty-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" role="presentation" focusable="false">
+                <path d="M5 5.5A2.5 2.5 0 0 1 7.5 3h9A2.5 2.5 0 0 1 19 5.5v13a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 5 18.5v-13Z"></path>
+                <path d="M8 7h8M8 11h8M8 15h5"></path>
+              </svg>
+            </span>
+            <h2>Ask about your documents</h2>
+            <p>Upload a PDF, then ask a question below. Answers are drawn from your uploaded documents.</p>
+            <p class="empty-examples-heading">Example questions</p>
+            <ul class="empty-examples">
+              <li>Summarize the key points.</li>
+              <li>What are the main conclusions?</li>
+              <li>List any dates or numbers it mentions.</li>
+            </ul>
           </div>
         </div>
         <div class="composer-area">

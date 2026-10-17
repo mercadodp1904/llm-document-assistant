@@ -598,12 +598,20 @@ input[type="file"] {
   background: var(--soft-accent);
   color: var(--accent-dark);
   display: flex;
-  font-size: var(--text-lg);
-  font-weight: 700;
   height: 42px;
   justify-content: center;
   margin-bottom: 16px;
   width: 42px;
+}
+
+.empty-icon svg {
+  fill: none;
+  height: 22px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
+  width: 22px;
 }
 
 .empty-state h2 {
@@ -617,6 +625,20 @@ input[type="file"] {
   font-size: var(--text-md);
   line-height: 1.5;
   margin: 0;
+}
+
+.empty-state .empty-examples-heading {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  margin-top: var(--space-5);
+}
+
+.empty-examples {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-5);
+  text-align: left;
 }
 
 .message {

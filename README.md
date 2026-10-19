@@ -1,4 +1,6 @@
-# LLM Document Assistant
+# Tima
+
+Named after my first cat.
 
 A document Q&A tool: upload a PDF, ask questions, get answers grounded in
 the document using Retrieval-Augmented Generation (RAG).
@@ -43,3 +45,5 @@ Run the tests with `python -m pytest -q`.
 Built to close specific gaps for software engineering / data roles:
 hands-on LLM integration, cloud deployment, authentication, and
 event-driven (async) backend patterns.
+
+Inspired by the Monster Hunter series. An unofficial fan-inspired project, not affiliated with or endorsed by Capcom.

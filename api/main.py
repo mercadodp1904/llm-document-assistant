@@ -11,7 +11,7 @@ load_dotenv()
 from api.routes import router
 
 
-app = FastAPI(title="LLM Document Assistant")
+app = FastAPI(title="Tima")
 app.include_router(router)
 static_dir = Path(__file__).resolve().parent.parent / "static"
 app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")

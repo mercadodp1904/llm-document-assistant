@@ -946,5 +946,5 @@ def test_static_frontend_is_served() -> None:
     response = client.get("/")
 
     assert response.status_code == 200
-    assert "Document Assistant" in response.text
+    assert "Tima" in response.text
     assert client.get("/app.js").status_code == 200

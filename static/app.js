@@ -122,7 +122,7 @@ function resetConversationView() {
           <path d="M8 7h8M8 11h8M8 15h5"></path>
         </svg>
       </span>
-      <h2>Ask about your documents</h2>
+      <h2>Ask Tima about your documents</h2>
       <p>Upload a PDF, then ask a question below. Answers are drawn from your uploaded documents.</p>
       <p class="empty-examples-heading">Example questions</p>
       <ul class="empty-examples">

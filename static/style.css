@@ -152,6 +152,12 @@ body {
   outline-offset: 2px;
 }
 
+.auth-credit {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  margin: var(--space-4) 0 0;
+}
+
 .app-header {
   align-items: center;
   background: var(--panel);
